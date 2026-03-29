@@ -23,6 +23,7 @@ class SimpleVectorDB:
         self.documents = []
         self.metadata = []
         self.vectors = None
+        self.file_hashes = {}
 
     def _cosine_similarity(self, vec_a, vec_b):
         """Calculates the cosine similarity between two vectors.
@@ -62,6 +63,32 @@ class SimpleVectorDB:
         else:
             self.metadata.extend([{} for _ in range(len(texts))])
         print("LOGE: [VectorDB] Done adding texts.")
+
+    def remove_by_filename(self, filename):
+        """Removes all entries associated with a given source filename.
+
+        Args:
+            filename: The basename of the source file to remove.
+
+        Returns:
+            The number of entries removed.
+        """
+        indices_to_keep = [
+            i for i, m in enumerate(self.metadata) if m.get("filename") != filename
+        ]
+        removed_count = len(self.documents) - len(indices_to_keep)
+
+        if removed_count == 0:
+            return 0
+
+        self.documents = [self.documents[i] for i in indices_to_keep]
+        self.metadata = [self.metadata[i] for i in indices_to_keep]
+        if self.vectors is not None and len(indices_to_keep) > 0:
+            self.vectors = self.vectors[indices_to_keep]
+        else:
+            self.vectors = None
+
+        return removed_count
 
     def search(self, query, top_k=3):
         """Searches the database for the most similar documents to the given query.
@@ -109,6 +136,7 @@ class SimpleVectorDB:
             "documents": self.documents,
             "metadata": self.metadata,
             "vectors": self.vectors.tolist() if self.vectors is not None else [],
+            "file_hashes": self.file_hashes,
         }
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
         with open(filepath, "w", encoding="utf-8") as f:
@@ -138,6 +166,7 @@ class SimpleVectorDB:
 
         self.documents = data.get("documents", [])
         self.metadata = data.get("metadata", [])
+        self.file_hashes = data.get("file_hashes", {})
         vectors = data.get("vectors", [])
         if vectors:
             self.vectors = np.array(vectors)
