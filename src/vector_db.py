@@ -128,8 +128,8 @@ class SimpleVectorDB:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # Fallback to the original legacy model name if no signature is found
-        saved_model = data.get("model_name", "jhgan/ko-sroberta-multitask")
+        # Use the current instance's model name as default if DB has no model signature
+        saved_model = data.get("model_name", self.model_name)
         if saved_model and saved_model != self.model_name:
             import sys
             print(f"LOGE: [VectorDB] ERROR: Model mismatch! DB uses '{saved_model}' but you requested '{self.model_name}'.")

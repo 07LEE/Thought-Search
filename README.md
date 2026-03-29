@@ -1,4 +1,4 @@
-# Thought-Search: Vector Search Engine
+# Thought-Search
 
 ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 
@@ -12,7 +12,7 @@ Thought-Search is a CLI tool that builds a local vector database from Markdown f
 
 - **Semantic Search:** Uses cosine similarity to match query vectors against indexed document chunks.
 - **Markdown Parsing:** Splits raw `.md` files into paragraph-level chunks for indexing.
-- **Local Embedding:** Uses the `jhgan/ko-sroberta-multitask` model to generate text embeddings locally.
+- **Local Embedding:** Generates text embeddings locally using a configurable `sentence-transformers` model.
 
 ### Architecture & Storage
 
@@ -64,23 +64,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Add Data
-
-To ensure your markdown files properly contain the mandatory YAML metadata block, use the provided generation or migration scripts:
-
-**Create a New Post** (Auto-generates formatting and slug)
-
-```bash
-python3 scripts/new_post.py "Your New Document Title"
-```
-
-**Migrate Legacy Posts** (Auto-injects YAML to any unformatted `.md` files in `posts/`)
-
-```bash
-python3 scripts/migrate.py
-```
-
-### 3. Usage
+### 2. Usage
 
 **Quick Demo**
 Run the automated script to index files and test the search functionality:
@@ -107,6 +91,6 @@ python src/search.py
 ## Directory Structure
 
 - `data/`: Output directory for the database JSON.
-- `posts/`: Target directory for input Markdown files.
-- `scripts/`: Utility shell scripts (`run_demo.sh`).
+- `posts/`: Input Markdown files (Git Submodule).
+- `scripts/`: Utility scripts (`run_demo.sh`).
 - `src/`: Application source code (`indexer.py`, `search.py`, `vector_db.py`).
