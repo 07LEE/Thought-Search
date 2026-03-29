@@ -1,5 +1,6 @@
 import os
 import glob
+import re
 from vector_db import SimpleVectorDB
 
 
@@ -24,7 +25,7 @@ def chunk_text(text):
 
 
 def index_markdown_files(posts_dir, db_path):
-    """Indexes all markdown files in the specified directory into the vector DB.
+    """Indexes all markdown files structurally in the specified directory into the vector DB.
 
     Args:
         posts_dir (str): The directory containing markdown files.
@@ -45,15 +46,30 @@ def index_markdown_files(posts_dir, db_path):
     print("LOGE: [Indexer] Start processing...\n")
 
     for md_file in md_files:
+        filename = os.path.basename(md_file)
+        
         with open(md_file, "r", encoding="utf-8") as f:
             content = f.read()
 
-        filename = os.path.basename(md_file)
-        chunks = chunk_text(content)
+        # Strict Frontmatter Validation
+        frontmatter_match = re.match(r"^---\n(.*?)\n---\n(.*)", content, flags=re.DOTALL)
+        
+        if not frontmatter_match:
+            print(f"LOGE: [Indexer] WARNING: Skipping '{filename}' (Missing YAML Frontmatter). Please run 'python scripts/migrate.py'.")
+            continue
+            
+        yaml_block = frontmatter_match.group(1)
+        raw_text = frontmatter_match.group(2)
+        
+        # Extract title from YAML
+        title_match = re.search(r'^title:\s*"(.*?)"', yaml_block, flags=re.MULTILINE)
+        title = title_match.group(1) if title_match else filename
+
+        chunks = chunk_text(raw_text)
 
         for chunk in chunks:
             all_chunks.append(chunk)
-            all_metadata.append({"filename": filename, "source_path": md_file})
+            all_metadata.append({"filename": filename, "source_path": md_file, "title": title})
 
         print(f"LOGE: [Indexer] Processed {filename}: Found {len(chunks)} chunks.")
         total_added_chunks += len(chunks)
