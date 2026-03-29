@@ -81,15 +81,18 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
         yaml_block = frontmatter_match.group(1)
         raw_text = frontmatter_match.group(2)
         
-        # Extract title from YAML
+        # Extract title and tags from YAML
         title_match = re.search(r'^title:\s*"(.*?)"', yaml_block, flags=re.MULTILINE)
         title = title_match.group(1) if title_match else filename
+
+        tags_match = re.search(r'^tags:\s*\[(.*)\]', yaml_block, flags=re.MULTILINE)
+        tags = [t.strip().strip('"').strip("'") for t in tags_match.group(1).split(",") if t.strip()] if tags_match else []
 
         chunks = chunk_text(raw_text)
 
         for chunk in chunks:
             all_chunks.append(chunk)
-            all_metadata.append({"filename": filename, "source_path": md_file, "title": title})
+            all_metadata.append({"filename": filename, "source_path": md_file, "title": title, "tags": tags})
 
         print(f"LOGE: [Indexer] Processed {filename}: Found {len(chunks)} chunks.")
         total_added_chunks += len(chunks)
