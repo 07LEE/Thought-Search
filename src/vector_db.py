@@ -12,10 +12,13 @@ os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
 
+from config import EMBEDDING_MODEL
+
 class SimpleVectorDB:
-    def __init__(self, model_name="jhgan/ko-sroberta-multitask"):
-        print(f"LOGE: [VectorDB] Loading embedding model: {model_name}...")
-        self.model = SentenceTransformer(model_name)
+    def __init__(self, model_name=None):
+        self.model_name = model_name or EMBEDDING_MODEL
+        print(f"LOGE: [VectorDB] Loading embedding model: {self.model_name}...")
+        self.model = SentenceTransformer(self.model_name)
 
         self.documents = []
         self.metadata = []
@@ -102,6 +105,7 @@ class SimpleVectorDB:
             filepath (str): The destination file path.
         """
         data = {
+            "model_name": self.model_name,
             "documents": self.documents,
             "metadata": self.metadata,
             "vectors": self.vectors.tolist() if self.vectors is not None else [],
@@ -123,6 +127,14 @@ class SimpleVectorDB:
 
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
+
+        # Fallback to the original legacy model name if no signature is found
+        saved_model = data.get("model_name", "jhgan/ko-sroberta-multitask")
+        if saved_model and saved_model != self.model_name:
+            import sys
+            print(f"LOGE: [VectorDB] ERROR: Model mismatch! DB uses '{saved_model}' but you requested '{self.model_name}'.")
+            print(f"LOGE: [VectorDB] Hint: Delete the DB file ({filepath}) or specify a different DB path.")
+            sys.exit(1)
 
         self.documents = data.get("documents", [])
         self.metadata = data.get("metadata", [])
