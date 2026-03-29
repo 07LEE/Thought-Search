@@ -66,14 +66,17 @@ def search_query(db, query, top_k):
 
     for i, res in enumerate(results, 1):
         score = res["score"]
-        filename = res["metadata"]["filename"]
+        meta = res["metadata"]
+        title = meta.get("title", meta.get("filename", "Unknown"))
+        tags = meta.get("tags", [])
         snippet = res["text"]
 
         if len(snippet) > 200:
             snippet = snippet[:200] + "..."
 
-        print(f"[{i}] Source: {filename} (Similarity Score: {score:.4f})")
-        print(f"    📝 Content: {snippet}\n")
+        tag_str = f"  |  tags: {', '.join(tags)}" if tags else ""
+        print(f"[{i}] {title}{tag_str}  (Score: {score:.4f})")
+        print(f"    📝 {snippet}\n")
 
 
 if __name__ == "__main__":
