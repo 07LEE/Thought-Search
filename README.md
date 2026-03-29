@@ -29,6 +29,15 @@ Thought-Search is a CLI tool that builds a local vector database from Markdown f
 
 - **Format:** Markdown (`*.md`)
 - **Source Directory:** All target files must be located in the `posts/` directory.
+- **Mandatory MetaData:** Every file must start with a YAML Frontmatter block to be indexed successfully:
+
+```yaml
+---
+title: "Your Document Title"
+date: "YYYY-MM-DD"
+tags: ["tag1", "tag2"]
+---
+```
 
 ### Storage Output
 
@@ -57,7 +66,19 @@ pip install -r requirements.txt
 
 ### 2. Add Data
 
-Place your markdown files into the `posts/` directory.
+To ensure your markdown files properly contain the mandatory YAML metadata block, use the provided generation or migration scripts:
+
+**Create a New Post** (Auto-generates formatting and slug)
+
+```bash
+python3 scripts/new_post.py "Your New Document Title"
+```
+
+**Migrate Legacy Posts** (Auto-injects YAML to any unformatted `.md` files in `posts/`)
+
+```bash
+python3 scripts/migrate.py
+```
 
 ### 3. Usage
 
