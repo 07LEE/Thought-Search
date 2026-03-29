@@ -4,24 +4,43 @@ import re
 from vector_db import SimpleVectorDB
 
 
-def chunk_text(text):
-    """Splits raw text into paragraph-level chunks based on double newlines.
+def chunk_text(text, max_chunk_size=800):
+    """Splits text semantically by paragraphs while preserving markdown heading context.
 
     Args:
-        text (str): The raw input text.
+        text (str): The raw input markdown text.
+        max_chunk_size (int): The maximum number of characters per chunk.
 
     Returns:
-        list[str]: A list of valid, non-empty text chunks.
+        list[str]: A list of valid, context-aware text chunks.
     """
-    chunks = text.split("\n\n")
+    paragraphs = text.split('\n\n')
     valid_chunks = []
+    current_heading = ""
+    current_chunk = ""
 
-    for chunk in chunks:
-        cleaned = chunk.strip()
-        if len(cleaned) > 10:
-            valid_chunks.append(cleaned)
-
-    return valid_chunks
+    for paragraph in paragraphs:
+        p_stripped = paragraph.strip()
+        if not p_stripped:
+            continue
+            
+        # Update context if a heading is found to help the LLM/Vector model understand semantic belonging.
+        if p_stripped.startswith('#'):
+            current_heading = p_stripped.split('\n')[0]
+            
+        # If adding the next paragraph breaches the max limit, flush the current chunk to the results
+        # and re-inject the active heading recursively into the new chunk.
+        if len(current_chunk) + len(p_stripped) > max_chunk_size and current_chunk:
+            valid_chunks.append(current_chunk.strip())
+            current_chunk = f"[{current_heading}]\n\n" if current_heading else ""
+            
+        current_chunk += p_stripped + "\n\n"
+        
+    if current_chunk.strip():
+        valid_chunks.append(current_chunk.strip())
+        
+    # Remove fragments that are too short to hold standalone semantic meaning.
+    return [chunk for chunk in valid_chunks if len(chunk) > 20]
 
 
 def index_markdown_files(posts_dir, db_path, model_name=None):
