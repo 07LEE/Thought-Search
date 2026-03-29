@@ -24,14 +24,15 @@ def chunk_text(text):
     return valid_chunks
 
 
-def index_markdown_files(posts_dir, db_path):
+def index_markdown_files(posts_dir, db_path, model_name=None):
     """Indexes all markdown files structurally in the specified directory into the vector DB.
 
     Args:
         posts_dir (str): The directory containing markdown files.
         db_path (str): The path to the vector database JSON file.
+        model_name (str, optional): The embedding model to use.
     """
-    db = SimpleVectorDB()
+    db = SimpleVectorDB(model_name=model_name)
     if os.path.exists(db_path):
         db.load(db_path)
 
@@ -84,8 +85,14 @@ def index_markdown_files(posts_dir, db_path):
 
 
 if __name__ == "__main__":
+    import argparse
+    from config import DB_DEFAULT_PATH
+
+    parser = argparse.ArgumentParser(description="Thought-Search Markdown Indexer")
+    parser.add_argument("--model", type=str, default=None, help="The embedding model to use.")
+    args = parser.parse_args()
+
     current_dir = os.path.dirname(os.path.abspath(__file__))
     posts_directory = os.path.join(current_dir, "..", "posts")
-    database_file = os.path.join(current_dir, "..", "data", "thought-search-db.json")
 
-    index_markdown_files(posts_directory, database_file)
+    index_markdown_files(posts_directory, DB_DEFAULT_PATH, args.model)

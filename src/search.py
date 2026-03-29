@@ -16,11 +16,12 @@ def main():
     parser.add_argument(
         "--top_k", "-k", type=int, default=3, help="Number of results to retrieve."
     )
-    db_default_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "..", "data", "thought-search-db.json"
+    from config import DB_DEFAULT_PATH
+    parser.add_argument(
+        "--db", type=str, default=DB_DEFAULT_PATH, help="Path to the saved vector DB file."
     )
     parser.add_argument(
-        "--db", type=str, default=db_default_path, help="Path to the saved vector DB file."
+        "--model", type=str, default=None, help="The embedding model to use."
     )
 
     args = parser.parse_args()
@@ -31,7 +32,7 @@ def main():
         sys.exit(1)
 
     print("LOGE: [Search] Loading Vector DB... (This may take a few seconds.)")
-    db = SimpleVectorDB()
+    db = SimpleVectorDB(model_name=args.model)
     db.load(args.db)
 
     if args.query:
