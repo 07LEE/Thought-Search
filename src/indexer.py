@@ -57,11 +57,12 @@ def chunk_text(text, max_chunk_size=800):
     return [chunk for chunk in valid_chunks if len(chunk) > 20]
 
 
-def parse_markdown(filepath):
-    """Parses a markdown file and extracts frontmatter metadata and text chunks.
+def parse_markdown(filepath, rel_path=""):
+    """Parses a markdown file and extracts frontmatter metadata, text chunks, and categories.
 
     Args:
         filepath: The absolute path to the markdown file.
+        rel_path: The relative path from the base posts directory.
 
     Returns:
         A tuple of (chunks, metadata_template) on success, or (None, None)
@@ -86,8 +87,18 @@ def parse_markdown(filepath):
     tags_match = re.search(r'^tags:\s*\[(.*)\]', yaml_block, flags=re.MULTILINE)
     tags = [t.strip().strip('"').strip("'") for t in tags_match.group(1).split(",") if t.strip()] if tags_match else []
 
+    # Extract categories from the directory structure
+    categories = [p for p in os.path.dirname(rel_path).split(os.sep) if p]
+
     chunks = chunk_text(raw_text)
-    meta = {"filename": filename, "source_path": filepath, "title": title, "tags": tags}
+    meta = {
+        "filename": filename, 
+        "rel_path": rel_path,
+        "source_path": filepath, 
+        "title": title, 
+        "tags": tags,
+        "categories": categories
+    }
 
     return chunks, meta
 
@@ -106,12 +117,14 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
     if os.path.exists(db_path):
         db.load(db_path)
 
-    md_files = glob.glob(os.path.join(posts_dir, "*.md"))
+    # Look for markdown files recursively in subdirectories
+    md_files = glob.glob(os.path.join(posts_dir, "**", "*.md"), recursive=True)
     current_files = {}
 
     for md_file in md_files:
-        filename = os.path.basename(md_file)
-        current_files[filename] = md_file
+        # Use relative path as the unique key to avoid collision with identical filenames in different folders
+        rel_path = os.path.relpath(md_file, posts_dir)
+        current_files[rel_path] = md_file
 
     # --- Detect Changes ---
     stored_hashes = db.file_hashes
@@ -123,10 +136,10 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
     possibly_changed = current_filenames & stored_filenames
 
     changed = set()
-    for filename in possibly_changed:
-        current_hash = compute_file_hash(current_files[filename])
-        if current_hash != stored_hashes.get(filename):
-            changed.add(filename)
+    for rel_path in possibly_changed:
+        current_hash = compute_file_hash(current_files[rel_path])
+        if current_hash != stored_hashes.get(rel_path):
+            changed.add(rel_path)
 
     unchanged_count = len(possibly_changed) - len(changed)
     files_to_index = new_files | changed
@@ -136,19 +149,21 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
           f"Deleted: {len(deleted)}, Unchanged: {unchanged_count}\n")
 
     # --- Remove Stale Entries ---
-    for filename in deleted | changed:
-        removed = db.remove_by_filename(filename)
-        if filename in deleted:
-            del db.file_hashes[filename]
-            print(f"LOGE: [Indexer] Removed: {filename} ({removed} chunks)")
+    for identifier in deleted | changed:
+        # SimpleVectorDB matches by 'filename' metadata, so we pass rel_path here if we use it as ID.
+        # But we've updated metadata to store rel_path as well.
+        removed = db.remove_by_filename(identifier)
+        if identifier in deleted:
+            del db.file_hashes[identifier]
+            print(f"LOGE: [Indexer] Removed: {identifier} ({removed} chunks)")
 
     # --- Index New & Changed Files ---
     all_chunks = []
     all_metadata = []
 
-    for filename in sorted(files_to_index):
-        filepath = current_files[filename]
-        chunks, meta = parse_markdown(filepath)
+    for rel_path in sorted(files_to_index):
+        filepath = current_files[rel_path]
+        chunks, meta = parse_markdown(filepath, rel_path=rel_path)
 
         if chunks is None:
             print(f"LOGE: [Indexer] WARNING: Skipping '{filename}' (Missing YAML Frontmatter).")
@@ -158,8 +173,8 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
             all_chunks.append(chunk)
             all_metadata.append(meta)
 
-        db.file_hashes[filename] = compute_file_hash(filepath)
-        print(f"LOGE: [Indexer] Indexed: {filename} ({len(chunks)} chunks)")
+        db.file_hashes[rel_path] = compute_file_hash(filepath)
+        print(f"LOGE: [Indexer] Indexed: {rel_path} ({len(chunks)} chunks)")
 
     if all_chunks:
         db.add_texts(all_chunks, metadatas=all_metadata)
@@ -173,13 +188,11 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
 
 if __name__ == "__main__":
     import argparse
-    from config import DB_DEFAULT_PATH
+    from config import DB_DEFAULT_PATH, POSTS_DIR
 
     parser = argparse.ArgumentParser(description="Thought-Search Markdown Indexer")
     parser.add_argument("--model", type=str, default=None, help="The embedding model to use.")
+    parser.add_argument("--posts", "-p", type=str, default=POSTS_DIR, help="The directory containing markdown files.")
     args = parser.parse_args()
 
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    posts_directory = os.path.join(current_dir, "..", "posts")
-
-    index_markdown_files(posts_directory, DB_DEFAULT_PATH, args.model)
+    index_markdown_files(args.posts, DB_DEFAULT_PATH, args.model)

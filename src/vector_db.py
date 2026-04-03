@@ -74,7 +74,8 @@ class SimpleVectorDB:
             The number of entries removed.
         """
         indices_to_keep = [
-            i for i, m in enumerate(self.metadata) if m.get("filename") != filename
+            i for i, m in enumerate(self.metadata) 
+            if m.get("rel_path", m.get("filename")) != filename
         ]
         removed_count = len(self.documents) - len(indices_to_keep)
 
