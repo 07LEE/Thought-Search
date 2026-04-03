@@ -49,34 +49,76 @@ def main():
             search_query(db, query, args.top_k)
 
 
+import textwrap
+
 def search_query(db, query, top_k):
-    """Executes a search query and prints the formatted results.
+    """Executes a search query and prints the formatted, clean results.
 
     Args:
         db (SimpleVectorDB): The loaded vector database instance.
         query (str): The search query text.
         top_k (int): The number of top results to retrieve.
     """
-    print(f"\n🔎 [{query}] Search Results (Top {top_k})...\n")
+    # ANSI color codes for sophisticated look
+    BOLD = "\033[1m"
+    CYAN = "\033[36m"
+    GREEN = "\033[32m"
+    DIM = "\033[2m"
+    RESET = "\033[0m"
+
+    print(f"\n{CYAN}{BOLD}🔎 Search Results for: '{query}'{RESET}")
+    print(f"{DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{RESET}")
+    
     results = db.search(query, top_k=top_k)
 
     if not results:
-        print("LOGE: [Search] No matching results found.")
+        print(f"{GREEN}LOGE: [Search] No matching results found.{RESET}")
         return
+
+    try:
+        terminal_width = min(os.get_terminal_size().columns, 100)
+    except (AttributeError, OSError):
+        terminal_width = 80
 
     for i, res in enumerate(results, 1):
         score = res["score"]
         meta = res["metadata"]
         title = meta.get("title", meta.get("filename", "Unknown"))
         tags = meta.get("tags", [])
-        snippet = res["text"]
+        categories = meta.get("categories", [])
+        snippet = res["text"].strip()
 
-        if len(snippet) > 200:
-            snippet = snippet[:200] + "..."
+        # Format header with Category and Title
+        cat_str = f"[{' > '.join(categories)}] " if categories else ""
+        header = f"{BOLD}{i}. {cat_str}{title}{RESET} {DIM}(Score: {score:.4f}){RESET}"
+        
+        # Format tags
+        tag_line = f"{CYAN}#{' #'.join(tags)}{RESET}" if tags else ""
 
-        tag_str = f"  |  tags: {', '.join(tags)}" if tags else ""
-        print(f"[{i}] {title}{tag_str}  (Score: {score:.4f})")
-        print(f"    📝 {snippet}\n")
+        print(header)
+        if tag_line:
+            print(f"   {tag_line}")
+        
+        # Preserve original structure while wrapping long lines
+        wrapped_lines = []
+        for line in snippet.splitlines():
+            if not line.strip():
+                wrapped_lines.append("")
+                continue
+            
+            # Wrap only long lines, preserving the indentation for wrapped parts
+            sub_lines = textwrap.wrap(
+                line, 
+                width=terminal_width - 6, 
+                initial_indent="   ", 
+                subsequent_indent="   "
+            )
+            wrapped_lines.extend(sub_lines)
+        
+        print("\n".join(wrapped_lines))
+        print(f"{DIM}──────────────────────────────────────────────────────────────{RESET}")
+
+    print(f"{DIM}Total {len(results)} results displayed.{RESET}\n")
 
 
 if __name__ == "__main__":
