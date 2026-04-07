@@ -2,6 +2,8 @@ import os
 import glob
 import re
 import hashlib
+import concurrent.futures
+from functools import partial
 from vector_db import SimpleVectorDB
 
 
@@ -157,24 +159,39 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
             del db.file_hashes[identifier]
             print(f"LOGE: [Indexer] Removed: {identifier} ({removed} chunks)")
 
-    # --- Index New & Changed Files ---
+    # --- Index New & Changed Files (Parallel Version) ---
     all_chunks = []
     all_metadata = []
 
-    for rel_path in sorted(files_to_index):
-        filepath = current_files[rel_path]
-        chunks, meta = parse_markdown(filepath, rel_path=rel_path)
-
-        if chunks is None:
-            print(f"LOGE: [Indexer] WARNING: Skipping '{filename}' (Missing YAML Frontmatter).")
-            continue
-
-        for chunk in chunks:
-            all_chunks.append(chunk)
-            all_metadata.append(meta)
-
-        db.file_hashes[rel_path] = compute_file_hash(filepath)
-        print(f"LOGE: [Indexer] Indexed: {rel_path} ({len(chunks)} chunks)")
+    # Prepare arguments for parallel execution
+    targets = sorted(files_to_index)
+    
+    if targets:
+        print(f"LOGE: [Indexer] Indexing {len(targets)} files in parallel...")
+        
+        # We use a wrapper to pass additional fixed arguments to parse_markdown
+        # parse_markdown(filepath, rel_path="")
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            # Map returns results in the order of the inputs
+            future_to_file = {
+                executor.submit(parse_markdown, current_files[rel_path], rel_path): rel_path 
+                for rel_path in targets
+            }
+            
+            for future in concurrent.futures.as_completed(future_to_file):
+                rel_path = future_to_file[future]
+                filepath = current_files[rel_path]
+                try:
+                    chunks, meta = future.result()
+                    if chunks:
+                        all_chunks.extend(chunks)
+                        all_metadata.extend([meta] * len(chunks)) # Duplicate meta for each chunk
+                        db.file_hashes[rel_path] = compute_file_hash(filepath)
+                        print(f"LOGE: [Indexer] Indexed: {rel_path} ({len(chunks)} chunks)")
+                    else:
+                        print(f"LOGE: [Indexer] WARNING: Skipping '{rel_path}' (Invalid content).")
+                except Exception as exc:
+                    print(f"LOGE: [Indexer] ERROR: '{rel_path}' generated an exception: {exc}")
 
     if all_chunks:
         db.add_texts(all_chunks, metadatas=all_metadata)
