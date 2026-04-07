@@ -43,7 +43,7 @@ class SimpleVectorDB:
         return dot_product / (norm_a * norm_b)
 
     def add_texts(self, texts, metadatas=None):
-        """Calculates embeddings for a list of texts and adds them to the database.
+        """Calculates embeddings for a list of texts, normalizes them, and adds them to the database.
 
         Args:
             texts (list[str]): A list of string texts to embed and add.
@@ -51,6 +51,12 @@ class SimpleVectorDB:
         """
         print(f"LOGE: [VectorDB] Embedding {len(texts)} texts...")
         new_vectors = self.model.encode(texts)
+        
+        # --- L2 Normalization ---
+        # We normalize vectors to unit length (norm=1). 
+        # This allows us to calculate Cosine Similarity using simple Dot Product later.
+        norms = np.linalg.norm(new_vectors, axis=1, keepdims=True)
+        new_vectors = new_vectors / (norms + 1e-10) # Avoid division by zero
 
         if self.vectors is None:
             self.vectors = new_vectors
@@ -92,7 +98,7 @@ class SimpleVectorDB:
         return removed_count
 
     def search(self, query, top_k=3):
-        """Searches the database for the most similar documents to the given query.
+        """Searches the database for the most similar documents to the given query using vectorized operations.
 
         Args:
             query (str): The search query text.
@@ -104,14 +110,19 @@ class SimpleVectorDB:
         if self.vectors is None or len(self.documents) == 0:
             return []
 
+        # 1. Encode query and normalize it to match the stored vectors
         query_vector = self.model.encode(query)
+        query_norm = np.linalg.norm(query_vector)
+        if query_norm > 0:
+            query_vector = query_vector / query_norm
 
-        similarities = []
-        for vec in self.vectors:
-            sim = self._cosine_similarity(query_vector, vec)
-            similarities.append(sim)
+        # 2. Vectorized calculation!
+        # Since both query and stored vectors are unit vectors (norm=1),
+        # Cosine Similarity is simply the Dot Product.
+        # np.dot(matrix, vector) calculates similarity with ALL documents at once in C/ASM.
+        similarities = np.dot(self.vectors, query_vector)
 
-        similarities = np.array(similarities)
+        # 3. Get top-k indices efficiently
         top_k_indices = similarities.argsort()[::-1][:top_k]
 
         results = []
