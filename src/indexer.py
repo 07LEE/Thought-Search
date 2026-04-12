@@ -4,6 +4,7 @@ import re
 import hashlib
 import concurrent.futures
 from functools import partial
+import yaml
 from vector_db import SimpleVectorDB
 
 
@@ -82,12 +83,21 @@ def parse_markdown(filepath, rel_path=""):
     yaml_block = frontmatter_match.group(1)
     raw_text = frontmatter_match.group(2)
 
-    # Extract title and tags from YAML
-    title_match = re.search(r'^title:\s*"(.*?)"', yaml_block, flags=re.MULTILINE)
-    title = title_match.group(1) if title_match else filename
+    try:
+        # Use safe_load to avoid arbitrary code execution from malicious YAML
+        frontmatter = yaml.safe_load(yaml_block)
+    except yaml.YAMLError:
+        print(f"LOGE: [Indexer] WARNING: Failed to parse YAML in '{filepath}'.")
+        return None, None
 
-    tags_match = re.search(r'^tags:\s*\[(.*)\]', yaml_block, flags=re.MULTILINE)
-    tags = [t.strip().strip('"').strip("'") for t in tags_match.group(1).split(",") if t.strip()] if tags_match else []
+    if not isinstance(frontmatter, dict):
+        return None, None
+
+    # Extract title and tags from PyYAML's dict
+    title = frontmatter.get("title", filename)
+    tags = frontmatter.get("tags", [])
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
 
     # Extract categories from the directory structure
     categories = [p for p in os.path.dirname(rel_path).split(os.sep) if p]

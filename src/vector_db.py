@@ -3,7 +3,7 @@ import os
 import warnings
 import logging
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 
 # Hide internal warning messages
 warnings.filterwarnings("ignore")
@@ -12,13 +12,17 @@ os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
 
-from config import EMBEDDING_MODEL
+from config import EMBEDDING_MODEL, RERANK_MODEL
 
 class SimpleVectorDB:
-    def __init__(self, model_name=None):
+    def __init__(self, model_name=None, rerank_model_name=None):
         self.model_name = model_name or EMBEDDING_MODEL
+        self.rerank_model_name = rerank_model_name or RERANK_MODEL
         print(f"LOGE: [VectorDB] Loading embedding model: {self.model_name}...")
         self.model = SentenceTransformer(self.model_name)
+        
+        # Lazy loading for reranker to save memory if not used
+        self.reranker = None
 
         self.documents = []
         self.metadata = []
@@ -137,38 +141,80 @@ class SimpleVectorDB:
 
         return results
 
-    def save(self, filepath):
-        """Saves the database state to a JSON file.
+    def rerank(self, query, results):
+        """Refines search results using a Cross-Encoder for better accuracy.
 
         Args:
-            filepath (str): The destination file path.
+            query (str): The search query text.
+            results (list[dict]): Initial search results to rerank.
+
+        Returns:
+            list[dict]: Reranked results with new scores.
         """
+        if not results:
+            return []
+            
+        if self.reranker is None:
+            print(f"LOGE: [VectorDB] Loading reranker model: {self.rerank_model_name}...")
+            self.reranker = CrossEncoder(self.rerank_model_name)
+            
+        # Prepare pairs for cross-encoder: (query, document_text)
+        pairs = [[query, res["text"]] for res in results]
+        
+        # Predict scores (Cross-Encoder gives raw relevance scores)
+        rerank_scores = self.reranker.predict(pairs)
+        
+        # Update scores in the result dictionaries
+        for i, res in enumerate(results):
+            res["rerank_score"] = float(rerank_scores[i])
+            
+        # Sort by the new rerank_score
+        results.sort(key=lambda x: x["rerank_score"], reverse=True)
+        
+        return results
+
+    def save(self, filepath):
+        """Saves the database state to a JSON file and vectors to a binary .npy file.
+
+        Args:
+            filepath (str): The destination file path for the JSON metadata.
+        """
+        # Save vectors separately as binary to maximize performance and minimize disk usage
+        vector_path = filepath.rsplit('.', 1)[0] + ".vectors.npy"
+        
         data = {
             "model_name": self.model_name,
             "documents": self.documents,
             "metadata": self.metadata,
-            "vectors": self.vectors.tolist() if self.vectors is not None else [],
             "file_hashes": self.file_hashes,
         }
+        
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+        
+        # 1. Save metadata as JSON
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"LOGE: [VectorDB] Saved DB to {filepath}")
+            
+        # 2. Save vectors as Binary
+        if self.vectors is not None:
+            np.save(vector_path, self.vectors)
+            
+        print(f"LOGE: [VectorDB] Saved DB to {filepath} (Vectors: {vector_path})")
 
     def load(self, filepath):
-        """Loads the database state from a JSON file.
+        """Loads the database state from JSON and binary files.
 
         Args:
-            filepath (str): The source file path.
+            filepath (str): The source JSON file path.
         """
         if not os.path.exists(filepath):
             print("LOGE: [VectorDB] No existing DB found. Starting fresh.")
             return
 
+        # 1. Load metadata
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # Use the current instance's model name as default if DB has no model signature
         saved_model = data.get("model_name", self.model_name)
         if saved_model and saved_model != self.model_name:
             import sys
@@ -179,9 +225,21 @@ class SimpleVectorDB:
         self.documents = data.get("documents", [])
         self.metadata = data.get("metadata", [])
         self.file_hashes = data.get("file_hashes", {})
-        vectors = data.get("vectors", [])
-        if vectors:
-            self.vectors = np.array(vectors)
+        
+        # 2. Load vectors from binary file
+        vector_path = filepath.rsplit('.', 1)[0] + ".vectors.npy"
+        if os.path.exists(vector_path):
+            self.vectors = np.load(vector_path)
+            # Compatibility check: ensure vectors match document count
+            if len(self.vectors) != len(self.documents):
+                print(f"LOGE: [VectorDB] WARNING: Vector count ({len(self.vectors)}) mismatch with documents ({len(self.documents)})!")
         else:
-            self.vectors = None
+            # Fallback for old JSON-based DBs
+            vectors = data.get("vectors", [])
+            if vectors:
+                print("LOGE: [VectorDB] Migrating old JSON vectors to binary format...")
+                self.vectors = np.array(vectors)
+            else:
+                self.vectors = None
+                
         print(f"LOGE: [VectorDB] Loaded DB from {filepath} ({len(self.documents)} documents)")

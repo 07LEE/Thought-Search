@@ -8,10 +8,10 @@ __pycache__/
 
 # Database
 *.json
+*.vectors.npy
 
 # OS generated files
 .DS_Store
 
 # Local project settings
 .local/
-posts/
