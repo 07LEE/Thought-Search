@@ -13,3 +13,6 @@ POSTS_DIR = os.getenv(
     "THOUGHT_SEARCH_POSTS",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "posts")
 )
+
+# Reranking Model
+RERANK_MODEL = os.getenv("THOUGHT_SEARCH_RERANK_MODEL", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
