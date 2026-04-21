@@ -125,18 +125,46 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
         db_path: The path to the vector database JSON file.
         model_name: The embedding model to use (optional).
     """
+    from config import EXCLUDED_DIRS, EXCLUDED_FILENAMES, SUPPORTED_EXTENSIONS
     db = SimpleVectorDB(model_name=model_name)
     if os.path.exists(db_path):
         db.load(db_path)
 
     # Look for markdown files recursively in subdirectories
-    md_files = glob.glob(os.path.join(posts_dir, "**", "*.md"), recursive=True)
-    current_files = {}
+    md_files = glob.glob(os.path.join(posts_dir, "**", "*"), recursive=True)
+    
+    valid_files = []
+    for f in md_files:
+        if os.path.isdir(f):
+            continue
+            
+        basename = os.path.basename(f)
+        rel_path = os.path.relpath(f, posts_dir)
+        path_parts = rel_path.split(os.sep)
+        
+        # 1. Check if filename is in excluded list
+        if basename in EXCLUDED_FILENAMES:
+            continue
+            
+        # 2. Check if file extension is supported
+        if not any(f.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
+            continue
+            
+        # 3. Check if any part of the path is in excluded directories
+        # This handles nested exclusions like 'private/secret.md' or 'Engineering/.git/config'
+        if any(part in EXCLUDED_DIRS for part in path_parts):
+            continue
 
-    for md_file in md_files:
-        # Use relative path as the unique key to avoid collision with identical filenames in different folders
-        rel_path = os.path.relpath(md_file, posts_dir)
-        current_files[rel_path] = md_file
+        # 4. Global hidden folder/file exclusion (standard practice)
+        if any(part.startswith('.') for part in path_parts if part != '.'):
+            continue
+
+        valid_files.append(f)
+
+    current_files = {}
+    for f in valid_files:
+        rel_path = os.path.relpath(f, posts_dir)
+        current_files[rel_path] = f
 
     # --- Detect Changes ---
     stored_hashes = db.file_hashes
@@ -215,7 +243,7 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
 
 if __name__ == "__main__":
     import argparse
-    from config import DB_DEFAULT_PATH, POSTS_DIR
+    from config import DB_DEFAULT_PATH, POSTS_DIR, EXCLUDED_DIRS, EXCLUDED_FILENAMES, SUPPORTED_EXTENSIONS
 
     parser = argparse.ArgumentParser(description="Thought-Search Markdown Indexer")
     parser.add_argument("--model", type=str, default=None, help="The embedding model to use.")
