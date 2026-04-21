@@ -10,6 +10,7 @@ warnings.filterwarnings("ignore")
 logging.getLogger("transformers").setLevel(logging.ERROR)
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
 
 from config import EMBEDDING_MODEL, RERANK_MODEL
@@ -18,7 +19,7 @@ class SimpleVectorDB:
     def __init__(self, model_name=None, rerank_model_name=None):
         self.model_name = model_name or EMBEDDING_MODEL
         self.rerank_model_name = rerank_model_name or RERANK_MODEL
-        print(f"LOGE: [VectorDB] Loading embedding model: {self.model_name}...")
+        # print(f"LOGE: [VectorDB] Loading embedding model: {self.model_name}...")
         self.model = SentenceTransformer(self.model_name)
         
         # Lazy loading for reranker to save memory if not used
@@ -155,7 +156,7 @@ class SimpleVectorDB:
             return []
             
         if self.reranker is None:
-            print(f"LOGE: [VectorDB] Loading reranker model: {self.rerank_model_name}...")
+            # print(f"LOGE: [VectorDB] Loading reranker model: {self.rerank_model_name}...")
             self.reranker = CrossEncoder(self.rerank_model_name)
             
         # Prepare pairs for cross-encoder: (query, document_text)
@@ -242,4 +243,4 @@ class SimpleVectorDB:
             else:
                 self.vectors = None
                 
-        print(f"LOGE: [VectorDB] Loaded DB from {filepath} ({len(self.documents)} documents)")
+        # print(f"LOGE: [VectorDB] Loaded DB from {filepath} ({len(self.documents)} documents)")
