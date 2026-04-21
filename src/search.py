@@ -41,7 +41,7 @@ def main():
         print("LOGE: [Search] Hint: Please run 'python src/indexer.py' first to index your documents.")
         sys.exit(1)
 
-    print("LOGE: [Search] Loading Vector DB... (This may take a few seconds.)")
+    # print("LOGE: [Search] Loading Vector DB... (This may take a few seconds.)")
     db = SimpleVectorDB(model_name=args.model)
     db.load(args.db)
 

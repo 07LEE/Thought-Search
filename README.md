@@ -80,14 +80,17 @@ export THOUGHT_SEARCH_POSTS="/path/to/your/knowledge-base"
 
 ### 3. Usage
 
-**Quick Demo**
-Run the automated script to index files and test the search functionality:
+The most convenient way to use Thought-Search is via the `run.sh` script, which automatically activates the environment, indexes your documents, and starts the search engine.
 
 ```bash
-bash scripts/run_demo.sh
+# Start interactive search (with auto-indexing)
+./run.sh
+
+# Search directly with a query
+./run.sh "How to install Kubernetes?"
 ```
 
-**Manual Workflow**
+#### Manual Workflow
 
 ```bash
 # 1. Index your markdown files
@@ -95,9 +98,6 @@ python src/indexer.py
 
 # 2. Search for a specific query
 python src/search.py "Your query here"
-
-# 3. Start an interactive search session
-python src/search.py
 ```
 
 ---
