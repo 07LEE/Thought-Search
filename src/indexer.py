@@ -2,6 +2,9 @@ import os
 import glob
 import re
 import hashlib
+import concurrent.futures
+from functools import partial
+import yaml
 from vector_db import SimpleVectorDB
 
 
@@ -57,11 +60,12 @@ def chunk_text(text, max_chunk_size=800):
     return [chunk for chunk in valid_chunks if len(chunk) > 20]
 
 
-def parse_markdown(filepath):
-    """Parses a markdown file and extracts frontmatter metadata and text chunks.
+def parse_markdown(filepath, rel_path=""):
+    """Parses a markdown file and extracts frontmatter metadata, text chunks, and categories.
 
     Args:
         filepath: The absolute path to the markdown file.
+        rel_path: The relative path from the base posts directory.
 
     Returns:
         A tuple of (chunks, metadata_template) on success, or (None, None)
@@ -79,15 +83,34 @@ def parse_markdown(filepath):
     yaml_block = frontmatter_match.group(1)
     raw_text = frontmatter_match.group(2)
 
-    # Extract title and tags from YAML
-    title_match = re.search(r'^title:\s*"(.*?)"', yaml_block, flags=re.MULTILINE)
-    title = title_match.group(1) if title_match else filename
+    try:
+        # Use safe_load to avoid arbitrary code execution from malicious YAML
+        frontmatter = yaml.safe_load(yaml_block)
+    except yaml.YAMLError:
+        print(f"LOGE: [Indexer] WARNING: Failed to parse YAML in '{filepath}'.")
+        return None, None
 
-    tags_match = re.search(r'^tags:\s*\[(.*)\]', yaml_block, flags=re.MULTILINE)
-    tags = [t.strip().strip('"').strip("'") for t in tags_match.group(1).split(",") if t.strip()] if tags_match else []
+    if not isinstance(frontmatter, dict):
+        return None, None
+
+    # Extract title and tags from PyYAML's dict
+    title = frontmatter.get("title", filename)
+    tags = frontmatter.get("tags", [])
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+
+    # Extract categories from the directory structure
+    categories = [p for p in os.path.dirname(rel_path).split(os.sep) if p]
 
     chunks = chunk_text(raw_text)
-    meta = {"filename": filename, "source_path": filepath, "title": title, "tags": tags}
+    meta = {
+        "filename": filename, 
+        "rel_path": rel_path,
+        "source_path": filepath, 
+        "title": title, 
+        "tags": tags,
+        "categories": categories
+    }
 
     return chunks, meta
 
@@ -102,16 +125,46 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
         db_path: The path to the vector database JSON file.
         model_name: The embedding model to use (optional).
     """
+    from config import EXCLUDED_DIRS, EXCLUDED_FILENAMES, SUPPORTED_EXTENSIONS
     db = SimpleVectorDB(model_name=model_name)
     if os.path.exists(db_path):
         db.load(db_path)
 
-    md_files = glob.glob(os.path.join(posts_dir, "*.md"))
-    current_files = {}
+    # Look for markdown files recursively in subdirectories
+    md_files = glob.glob(os.path.join(posts_dir, "**", "*"), recursive=True)
+    
+    valid_files = []
+    for f in md_files:
+        if os.path.isdir(f):
+            continue
+            
+        basename = os.path.basename(f)
+        rel_path = os.path.relpath(f, posts_dir)
+        path_parts = rel_path.split(os.sep)
+        
+        # 1. Check if filename is in excluded list
+        if basename in EXCLUDED_FILENAMES:
+            continue
+            
+        # 2. Check if file extension is supported
+        if not any(f.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
+            continue
+            
+        # 3. Check if any part of the path is in excluded directories
+        # This handles nested exclusions like 'private/secret.md' or 'Engineering/.git/config'
+        if any(part in EXCLUDED_DIRS for part in path_parts):
+            continue
 
-    for md_file in md_files:
-        filename = os.path.basename(md_file)
-        current_files[filename] = md_file
+        # 4. Global hidden folder/file exclusion (standard practice)
+        if any(part.startswith('.') for part in path_parts if part != '.'):
+            continue
+
+        valid_files.append(f)
+
+    current_files = {}
+    for f in valid_files:
+        rel_path = os.path.relpath(f, posts_dir)
+        current_files[rel_path] = f
 
     # --- Detect Changes ---
     stored_hashes = db.file_hashes
@@ -123,10 +176,10 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
     possibly_changed = current_filenames & stored_filenames
 
     changed = set()
-    for filename in possibly_changed:
-        current_hash = compute_file_hash(current_files[filename])
-        if current_hash != stored_hashes.get(filename):
-            changed.add(filename)
+    for rel_path in possibly_changed:
+        current_hash = compute_file_hash(current_files[rel_path])
+        if current_hash != stored_hashes.get(rel_path):
+            changed.add(rel_path)
 
     unchanged_count = len(possibly_changed) - len(changed)
     files_to_index = new_files | changed
@@ -136,30 +189,47 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
           f"Deleted: {len(deleted)}, Unchanged: {unchanged_count}\n")
 
     # --- Remove Stale Entries ---
-    for filename in deleted | changed:
-        removed = db.remove_by_filename(filename)
-        if filename in deleted:
-            del db.file_hashes[filename]
-            print(f"LOGE: [Indexer] Removed: {filename} ({removed} chunks)")
+    for identifier in deleted | changed:
+        # SimpleVectorDB matches by 'filename' metadata, so we pass rel_path here if we use it as ID.
+        # But we've updated metadata to store rel_path as well.
+        removed = db.remove_by_filename(identifier)
+        if identifier in deleted:
+            del db.file_hashes[identifier]
+            print(f"LOGE: [Indexer] Removed: {identifier} ({removed} chunks)")
 
-    # --- Index New & Changed Files ---
+    # --- Index New & Changed Files (Parallel Version) ---
     all_chunks = []
     all_metadata = []
 
-    for filename in sorted(files_to_index):
-        filepath = current_files[filename]
-        chunks, meta = parse_markdown(filepath)
-
-        if chunks is None:
-            print(f"LOGE: [Indexer] WARNING: Skipping '{filename}' (Missing YAML Frontmatter).")
-            continue
-
-        for chunk in chunks:
-            all_chunks.append(chunk)
-            all_metadata.append(meta)
-
-        db.file_hashes[filename] = compute_file_hash(filepath)
-        print(f"LOGE: [Indexer] Indexed: {filename} ({len(chunks)} chunks)")
+    # Prepare arguments for parallel execution
+    targets = sorted(files_to_index)
+    
+    if targets:
+        print(f"LOGE: [Indexer] Indexing {len(targets)} files in parallel...")
+        
+        # We use a wrapper to pass additional fixed arguments to parse_markdown
+        # parse_markdown(filepath, rel_path="")
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            # Map returns results in the order of the inputs
+            future_to_file = {
+                executor.submit(parse_markdown, current_files[rel_path], rel_path): rel_path 
+                for rel_path in targets
+            }
+            
+            for future in concurrent.futures.as_completed(future_to_file):
+                rel_path = future_to_file[future]
+                filepath = current_files[rel_path]
+                try:
+                    chunks, meta = future.result()
+                    if chunks:
+                        all_chunks.extend(chunks)
+                        all_metadata.extend([meta] * len(chunks)) # Duplicate meta for each chunk
+                        db.file_hashes[rel_path] = compute_file_hash(filepath)
+                        print(f"LOGE: [Indexer] Indexed: {rel_path} ({len(chunks)} chunks)")
+                    else:
+                        print(f"LOGE: [Indexer] WARNING: Skipping '{rel_path}' (Invalid content).")
+                except Exception as exc:
+                    print(f"LOGE: [Indexer] ERROR: '{rel_path}' generated an exception: {exc}")
 
     if all_chunks:
         db.add_texts(all_chunks, metadatas=all_metadata)
@@ -173,13 +243,11 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
 
 if __name__ == "__main__":
     import argparse
-    from config import DB_DEFAULT_PATH
+    from config import DB_DEFAULT_PATH, POSTS_DIR, EXCLUDED_DIRS, EXCLUDED_FILENAMES, SUPPORTED_EXTENSIONS
 
     parser = argparse.ArgumentParser(description="Thought-Search Markdown Indexer")
     parser.add_argument("--model", type=str, default=None, help="The embedding model to use.")
+    parser.add_argument("--posts", "-p", type=str, default=POSTS_DIR, help="The directory containing markdown files.")
     args = parser.parse_args()
 
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    posts_directory = os.path.join(current_dir, "..", "posts")
-
-    index_markdown_files(posts_directory, DB_DEFAULT_PATH, args.model)
+    index_markdown_files(args.posts, DB_DEFAULT_PATH, args.model)
