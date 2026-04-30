@@ -62,15 +62,39 @@ def extract_visualization_data():
                 if i < j:
                     edges.append([i, int(j)])
 
-    # 3. Combine data for visualization
+    # 3. Handle Categories and Coloring
+    # Extract categories from metadata and assign colors
+    all_categories = []
+    for m in metadata:
+        cat = m.get("categories", ["Uncategorized"])[0] # Use top-level category
+        all_categories.append(cat)
+    
+    unique_cats = sorted(list(set(all_categories)))
+    # Premium color palette
+    palette = [
+        '#38bdf8', # Sky
+        '#fb7185', # Rose
+        '#34d399', # Emerald
+        '#fbbf24', # Amber
+        '#a78bfa', # Violet
+        '#f472b6', # Pink
+        '#2dd4bf', # Teal
+        '#60a5fa', # Blue
+    ]
+    cat_to_color = {cat: palette[i % len(palette)] for i, cat in enumerate(unique_cats)}
+
+    # 4. Combine data for visualization
     nodes = []
     for i in range(len(vectors_3d)):
+        cat = metadata[i].get("categories", ["Uncategorized"])[0]
         node = {
             "id": i,
             "x": float(vectors_3d[i, 0]),
             "y": float(vectors_3d[i, 1]),
             "z": float(vectors_3d[i, 2]),
-            "size": 5 + min(15, len(documents[i]) / 100), # Size based on content length
+            "size": 5 + min(15, len(documents[i]) / 100),
+            "color": cat_to_color[cat],
+            "category": cat,
             "text": documents[i],
             "metadata": metadata[i]
         }
@@ -78,7 +102,8 @@ def extract_visualization_data():
 
     output_data = {
         "nodes": nodes,
-        "edges": edges
+        "edges": edges,
+        "categories": cat_to_color
     }
 
     print(f"Saving visualization data to {OUTPUT_PATH}...")

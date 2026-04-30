@@ -196,6 +196,35 @@
             z-index: 50;
         }
 
+        .legend {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1rem;
+            z-index: 60;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+        }
+
         /* Plotly Customization */
         .modebar {
             display: none !important;
@@ -210,6 +239,7 @@
 
     <main>
         <div id="plot"></div>
+        <div class="legend" id="legend"></div>
         <div class="info-panel" id="info-panel">
             <div class="info-title" id="info-title">문서 제목</div>
             <div class="info-path" id="info-path">path/to/document.md</div>
@@ -245,8 +275,21 @@
                 const data = await response.json();
                 const nodes = data.nodes;
                 const edges = data.edges;
+                const categories = data.categories;
                 
                 document.getElementById('doc-count').textContent = `${nodes.length} Nodes & ${edges.length} Semantic Connections`;
+
+                // Build Legend
+                const legendContainer = document.getElementById('legend');
+                for (const [cat, color] of Object.entries(categories)) {
+                    const item = document.createElement('div');
+                    item.className = 'legend-item';
+                    item.innerHTML = `
+                        <div class="legend-color" style="background: ${color}"></div>
+                        <span>${cat}</span>
+                    `;
+                    legendContainer.appendChild(item);
+                }
 
                 // 1. Nodes Trace
                 const nodeTrace = {
@@ -258,8 +301,7 @@
                     type: 'scatter3d',
                     marker: {
                         size: nodes.map(n => n.size),
-                        color: nodes.map(n => n.id),
-                        colorscale: 'Portland',
+                        color: nodes.map(n => n.color),
                         opacity: 0.9,
                         line: { color: 'rgba(255, 255, 255, 0.1)', width: 0.5 }
                     },
