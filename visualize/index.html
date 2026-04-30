@@ -182,6 +182,37 @@
             padding: 0;
         }
 
+        .search-container {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 400px;
+            z-index: 100;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 20px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            outline: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+
+        .search-input:focus {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+            width: 450px;
+            transform: translateX(-25px);
+        }
+
         .hint {
             position: absolute;
             bottom: 30px;
@@ -240,6 +271,9 @@
     <main>
         <div id="plot"></div>
         <div class="legend" id="legend"></div>
+        <div class="search-container">
+            <input type="text" class="search-input" id="search-input" placeholder="지식 조각 검색 (제목, 태그, 내용)...">
+        </div>
         <div class="info-panel" id="info-panel">
             <div class="info-title" id="info-title">문서 제목</div>
             <div class="info-path" id="info-path">path/to/document.md</div>
@@ -356,6 +390,36 @@
                 };
 
                 Plotly.newPlot('plot', [edgeTrace, nodeTrace], layout, config);
+
+                // --- Search Logic ---
+                const searchInput = document.getElementById('search-input');
+                searchInput.addEventListener('input', function() {
+                    const query = this.value.toLowerCase();
+                    
+                    if (!query) {
+                        // Reset all to normal
+                        Plotly.restyle('plot', {
+                            'marker.opacity': [0.9],
+                            'marker.size': [nodes.map(n => n.size)]
+                        }, [1]);
+                        return;
+                    }
+
+                    const matches = nodes.map(n => {
+                        const title = (n.metadata.title || "").toLowerCase();
+                        const tags = (n.metadata.tags || []).join(" ").toLowerCase();
+                        const text = (n.text || "").toLowerCase();
+                        return title.includes(query) || tags.includes(query) || text.includes(query);
+                    });
+
+                    const opacities = matches.map(m => m ? 1.0 : 0.05);
+                    const sizes = matches.map((m, i) => m ? nodes[i].size * 1.5 : 2);
+
+                    Plotly.restyle('plot', {
+                        'marker.opacity': [opacities],
+                        'marker.size': [sizes]
+                    }, [1]);
+                });
 
                 const plotDiv = document.getElementById('plot');
                 const panel = document.getElementById('info-panel');
