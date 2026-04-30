@@ -51,14 +51,34 @@ def extract_visualization_data():
     sim_matrix = np.dot(vectors_norm, vectors_norm.T)
     
     edges = []
-    SIMILARITY_THRESHOLD = 0.70 # Lower threshold to show more connections
+    SIMILARITY_THRESHOLD = 0.72 # Stricter threshold for high-quality connections
+    BROAD_TAGS = {"linux", "ubuntu"} # Tags that are too common to provide meaningful specific links
     
     for i in range(len(sim_matrix)):
-        # Find top 3 most similar documents for each document (excluding itself)
-        top_indices = np.argsort(sim_matrix[i])[::-1][1:4] 
+        # Find top 5 most similar documents (focused search)
+        top_indices = np.argsort(sim_matrix[i])[::-1][1:6] 
+        source_rel_path = metadata[i].get("rel_path")
+        source_tags = set(metadata[i].get("tags", []))
+        
         for j in top_indices:
-            if sim_matrix[i, j] > SIMILARITY_THRESHOLD:
-                # Add edge if not already added (undirected)
+            target_rel_path = metadata[j].get("rel_path")
+            target_tags = set(metadata[j].get("tags", []))
+            
+            # Skip connections between chunks of the SAME file
+            if source_rel_path == target_rel_path:
+                continue
+            
+            # Semantic Similarity with Specific Tag Boosting
+            score = sim_matrix[i, j]
+            
+            # Boost if they share SPECIFIC (not broad) tags
+            shared_tags = source_tags.intersection(target_tags)
+            specific_shared_tags = shared_tags - BROAD_TAGS
+            
+            if specific_shared_tags:
+                score += 0.12 # Stronger boost for specific thematic alignment
+                
+            if score > SIMILARITY_THRESHOLD:
                 if i < j:
                     edges.append([i, int(j)])
 
@@ -120,9 +140,27 @@ def extract_visualization_data():
         }
         nodes.append(node)
 
+    # 3. Calculate Structural Edges (Intra-file sequence)
+    # This connects chunks of the same file in order to show document structure
+    intra_file_edges = []
+    file_groups = {}
+    for i, meta in enumerate(metadata):
+        path = meta.get("rel_path")
+        if path:
+            if path not in file_groups:
+                file_groups[path] = []
+            file_groups[path].append(i)
+    
+    for path, indices in file_groups.items():
+        # Sort by chunk index or sequence if available, 
+        # but since they are added sequentially in indexer, original index works.
+        for k in range(len(indices) - 1):
+            intra_file_edges.append([indices[k], indices[k+1]])
+
     output_data = {
         "nodes": nodes,
         "edges": edges,
+        "intra_file_edges": intra_file_edges,
         "categories": cat_to_color
     }
 
@@ -130,7 +168,7 @@ def extract_visualization_data():
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         json.dump(output_data, f, ensure_ascii=False, indent=2)
     
-    print(f"Success! (Nodes: {len(nodes)}, Edges: {len(edges)})")
+    print(f"Success! (Nodes: {len(nodes)}, Edges: {len(edges)}, Intra-file Edges: {len(intra_file_edges)})")
 
 if __name__ == "__main__":
     extract_visualization_data()
