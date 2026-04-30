@@ -87,6 +87,25 @@ def extract_visualization_data():
     nodes = []
     for i in range(len(vectors_3d)):
         cat = metadata[i].get("categories", ["Uncategorized"])[0]
+        # Get modification time of the source file
+        source_path = metadata[i].get("source_path")
+        rel_path = metadata[i].get("rel_path")
+        
+        # Robust path resolution
+        mtime = 0
+        search_paths = []
+        if source_path: search_paths.append(source_path)
+        if rel_path:
+            # Try to resolve relative to current project root
+            search_paths.append(os.path.join(BASE_DIR, "posts", rel_path))
+            # Also try the resolved path from indexer's default
+            search_paths.append(os.path.join(BASE_DIR, "src", "..", "posts", rel_path))
+            
+        for path in search_paths:
+            if os.path.exists(path):
+                mtime = os.path.getmtime(path)
+                break
+        
         node = {
             "id": i,
             "x": float(vectors_3d[i, 0]),
@@ -95,6 +114,7 @@ def extract_visualization_data():
             "size": 5 + min(15, len(documents[i]) / 100),
             "color": cat_to_color[cat],
             "category": cat,
+            "mtime": mtime,
             "text": documents[i],
             "metadata": metadata[i]
         }

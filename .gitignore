@@ -15,3 +15,5 @@ __pycache__/
 
 # Local project settings
 .local/
+posts
+data/
