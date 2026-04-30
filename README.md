@@ -15,6 +15,7 @@ Thought-Search is a CLI tool that builds a local vector database from Markdown f
 - **Local Embedding:** Generates text embeddings locally using a configurable `sentence-transformers` model.
 - **Hierarchical Support:** Recursively searches for markdown files in subdirectories.
 - **Category Extraction:** Automatically extracts folder names from the directory structure and stores them as `categories` metadata.
+- **3D Knowledge Graph:** Interactive 3D visualization of semantic relationships between documents using t-SNE dimensionality reduction and Plotly.js.
 
 ### Architecture & Storage
 
@@ -98,7 +99,28 @@ python src/indexer.py
 
 # 2. Search for a specific query
 python src/search.py "Your query here"
+
+### 3D Visualization
+
+Visualize your knowledge base in an interactive 3D space:
+
+```bash
+# 1. Extract visualization data (t-SNE 3D reduction)
+python scripts/extract-viz-data.py
+
+# 2. Start a local web server
+python3 -m http.server 8000
+
+# 3. Open in your browser
+# URL: http://localhost:8000/visualize/
 ```
+
+**Features:**
+
+- **Domain Coloring:** Nodes colored by top-level categories.
+- **Dynamic Sizing:** Larger nodes indicate richer content density.
+- **Real-time Search:** Instantly highlight nodes by title, tags, or content.
+- **Interactive Panel:** Click nodes to read rendered Markdown previews.
 
 ---
 
