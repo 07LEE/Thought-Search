@@ -4,9 +4,23 @@ import numpy as np
 from collections import Counter
 
 class SparseIndex:
-    """Handles BM25-based sparse search logic."""
+    """Handles BM25-based sparse search logic for keyword-based retrieval.
+
+    This class implements the BM25 (Best Matching 25) ranking function, 
+    which is widely used for estimating the relevance of documents to a 
+    given search query.
+
+    Attributes:
+        tf (list[Counter]): Term frequencies for each document in the index.
+        idf (dict[str, float]): Inverse document frequency scores for each term.
+        avgdl (float): Average length of all documents in the index.
+        doc_lengths (list[int]): Length (word count) of each document.
+        k1 (float): BM25 parameter for term frequency scaling.
+        b (float): BM25 parameter for document length normalization.
+    """
     
     def __init__(self):
+        """Initializes the SparseIndex with default BM25 parameters."""
         self.tf = []          # Term frequencies per document
         self.idf = {}         # Inverse document frequency
         self.avgdl = 0        # Average document length
@@ -15,7 +29,7 @@ class SparseIndex:
         self.b = 0.75
 
     def _tokenize(self, text):
-        """Simple tokenizer for BM25.
+        """Simple alphanumeric tokenizer for BM25.
 
         Args:
             text (str): The raw text to tokenize.
@@ -26,10 +40,10 @@ class SparseIndex:
         return re.findall(r'\w+', text.lower())
 
     def rebuild(self, documents):
-        """Rebuilds the BM25 index from the provided documents.
+        """Rebuilds the BM25 index from the provided document collection.
 
         Args:
-            documents (list[str]): List of document texts.
+            documents (list[str]): List of raw document texts.
         """
         if not documents:
             self.tf = []
@@ -47,51 +61,54 @@ class SparseIndex:
         
         # Calculate IDF
         num_docs = len(documents)
-        word_doc_counts = Counter()
-        for tokens in doc_tokens:
-            unique_tokens = set(tokens)
-            for token in unique_tokens:
-                word_doc_counts[token] += 1
-        
+        all_terms = set()
+        for counter in self.tf:
+            all_terms.update(counter.keys())
+            
         self.idf = {}
-        for word, count in word_doc_counts.items():
-            self.idf[word] = math.log(1 + (num_docs - count + 0.5) / (count + 0.5))
+        for term in all_terms:
+            # Number of documents containing the term
+            doc_freq = sum(1 for counter in self.tf if term in counter)
+            # Standard BM25 IDF formula
+            self.idf[term] = math.log((num_docs - doc_freq + 0.5) / (doc_freq + 0.5) + 1.0)
 
     def search(self, query, documents, metadata, top_k=3):
-        """Searches the index using the BM25 algorithm.
+        """Calculates BM25 scores for the query and returns ranked results.
 
         Args:
             query (str): The search query text.
             documents (list[str]): The document pool to search in.
-            metadata (list[dict]): Metadata for each document.
+            metadata (list[dict]): Metadata associated with each document.
             top_k (int, optional): Number of results to return. Defaults to 3.
 
         Returns:
-            list[dict]: Ranked search results.
+            list[dict]: Ranked results with scores and document info.
         """
-        if not documents:
+        if not self.tf or not documents:
             return []
-            
+
         query_tokens = self._tokenize(query)
-        scores = np.zeros(len(documents))
+        scores = np.zeros(len(self.tf))
         
-        for token in query_tokens:
-            if token not in self.idf:
+        for term in query_tokens:
+            if term not in self.idf:
                 continue
             
-            idf = self.idf[token]
-            for i in range(len(documents)):
-                tf = self.tf[i].get(token, 0)
-                dl = self.doc_lengths[i]
-                
-                # BM25 Formula
-                score = idf * (tf * (self.k1 + 1)) / (tf + self.k1 * (1 - self.b + self.b * (dl / self.avgdl)))
-                scores[i] += score
-                
-        if scores.max() > 0:
-            scores = scores / scores.max()
-            
+            idf_val = self.idf[term]
+            for i, counter in enumerate(self.tf):
+                tf_val = counter[term]
+                # BM25 scoring formula
+                numerator = tf_val * (self.k1 + 1)
+                denominator = tf_val + self.k1 * (1 - self.b + self.b * self.doc_lengths[i] / self.avgdl)
+                scores[i] += idf_val * (numerator / denominator)
+
+        # Handle cases where all scores might be 0
+        if np.all(scores == 0):
+            return []
+
+        # Rank and filter
         top_k_indices = scores.argsort()[::-1][:top_k]
+        
         results = []
         for idx in top_k_indices:
             if scores[idx] <= 0: continue
@@ -100,23 +117,6 @@ class SparseIndex:
                 "text": documents[idx],
                 "metadata": metadata[idx],
                 "index": int(idx),
-                "type": "bm25"
+                "type": "keyword"
             })
         return results
-
-    def get_state(self):
-        """Returns the internal state for persistence."""
-        return {
-            "tf": self.tf,
-            "idf": self.idf,
-            "avgdl": self.avgdl,
-            "doc_lengths": self.doc_lengths
-        }
-
-    def set_state(self, state):
-        """Restores the internal state."""
-        if not state: return
-        self.tf = state.get("tf", [])
-        self.idf = state.get("idf", {})
-        self.avgdl = state.get("avgdl", 0)
-        self.doc_lengths = state.get("doc_lengths", [])
