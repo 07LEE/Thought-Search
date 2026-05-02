@@ -181,6 +181,21 @@ main {
     border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.info-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin: 1rem 0;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.5rem 0;
+    max-width: 100%;
+}
+
 /* Markdown Styling inside panel */
 .info-content h1, .info-content h2, .info-content h3, .info-content h4, .info-content h5, .info-content h6 {
     color: var(--text-primary);

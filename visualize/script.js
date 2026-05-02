@@ -5,7 +5,6 @@ let isUpdating = false;
 
 async function init() {
     try {
-        marked.use(markedKatex({ throwOnError: false }));
         marked.setOptions({ gfm: true, breaks: true, headerIds: false, mangle: false });
 
         const response = await fetch('/data/viz-data.json');
@@ -127,7 +126,35 @@ async function highlightNode(index) {
         });
 
         processedContent = processedContent.replace(/^\[(#{1,6}.+?)\]/gm, '$1');
-        document.getElementById('info-content').innerHTML = marked.parse(processedContent.substring(0, 5000));
+        // --- Math Protection: Hide math from marked.js ---
+        const mathBlocks = [];
+        // Protect display math ($$, \[...\]) and inline math ($, \(...\))
+        processedContent = processedContent.replace(/\$\$(.*?)\$\$|\$(.*?)\$|\\\[(.*?)\\\]|\\\((.*?)\\\)/gs, (match) => {
+            const id = `@@MATH${mathBlocks.length}@@`;
+            mathBlocks.push(match);
+            return id;
+        });
+
+        const infoContent = document.getElementById('info-content');
+        let html = marked.parse(processedContent.substring(0, 5000));
+        
+        // --- Math Restoration: Restore math tokens ---
+        html = html.replace(/@@MATH(\d+)@@/g, (match, id) => {
+            return mathBlocks[parseInt(id)];
+        });
+        
+        infoContent.innerHTML = html;
+        
+        // --- Render Math using KaTeX auto-render ---
+        renderMathInElement(infoContent, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\(', right: '\\)', display: false},
+                {left: '\\[', right: '\\]', display: true}
+            ],
+            throwOnError : false
+        });
         
         const tagsContainer = document.getElementById('info-tags');
         tagsContainer.innerHTML = '';
