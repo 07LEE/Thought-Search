@@ -93,6 +93,35 @@ async function init() {
         document.getElementById('close-panel-btn').onclick = resetView;
         window.addEventListener('keydown', e => { if (e.key === 'Escape') resetView(); });
 
+        document.getElementById('doc-count').textContent = `Stored: ${globalNodes.length} thoughts`;
+
+        const syncBtn = document.getElementById('sync-btn');
+        syncBtn.addEventListener('click', async () => {
+            syncBtn.disabled = true;
+            syncBtn.classList.add('loading');
+            syncBtn.innerHTML = 'Syncing...';
+            
+            try {
+                const res = await fetch('/api/sync', { method: 'POST' });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    // Success! Reload the data.
+                    // We can just re-init everything or reload the page.
+                    // Reloading the page is simpler for now to ensure everything is fresh.
+                    location.reload();
+                } else {
+                    alert('Sync failed: ' + result.message);
+                }
+            } catch (err) {
+                console.error('Sync Error:', err);
+                alert('An error occurred during sync.');
+            } finally {
+                syncBtn.disabled = false;
+                syncBtn.classList.remove('loading');
+                syncBtn.innerHTML = 'Sync DB';
+            }
+        });
+
     } catch (error) {
         console.error('Error:', error);
     }

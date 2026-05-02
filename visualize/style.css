@@ -31,6 +31,53 @@ header {
     align-items: center;
 }
 
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.sync-btn {
+    background: rgba(56, 189, 248, 0.1);
+    border: 1px solid var(--border-color);
+    color: var(--accent-color);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.sync-btn:hover:not(:disabled) {
+    background: var(--accent-color);
+    color: var(--bg-color);
+    transform: translateY(-1px);
+}
+
+.sync-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.sync-btn:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+.sync-btn.loading .sync-icon {
+    display: inline-block;
+    animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 h1 {
     margin: 0;
     font-family: 'Outfit', sans-serif;

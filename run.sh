@@ -29,6 +29,13 @@ else
     echo -e "${YELLOW}⚠ Warning: No virtual environment detected. Proceeding with system python...${RESET}"
 fi
 
+# Check for Visualization Mode
+if [ "$1" == "--viz" ]; then
+    echo -e "${CYAN}${BOLD}🌐 Launching Visualization Server at http://localhost:8080...${RESET}"
+    python3 src/core/server.py
+    exit 0
+fi
+
 # 3. Synchronize Knowledge (Auto-Indexing)
 echo -e "${CYAN}${BOLD}📂 Syncing Knowledge Base...${RESET}"
 python3 src/cli/indexer.py
