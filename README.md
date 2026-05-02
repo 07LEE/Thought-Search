@@ -11,6 +11,7 @@ Thought-Search is a CLI tool that builds a local vector database from Markdown f
 ### Text Processing & Embedding
 
 - **Semantic Search:** Uses cosine similarity to match query vectors against indexed document chunks.
+- **Hybrid Search:** Combines semantic (Vector) and keyword (BM25) search using Reciprocal Rank Fusion (RRF) for superior accuracy.
 - **Markdown Parsing:** Splits raw `.md` files into paragraph-level chunks for indexing.
 - **Local Embedding:** Generates text embeddings locally using a configurable `sentence-transformers` model.
 - **Hierarchical Support:** Recursively searches for markdown files in subdirectories.

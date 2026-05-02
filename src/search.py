@@ -109,9 +109,9 @@ def search_query(db, query, top_k, threshold=0.0, rerank=True, rerank_k=10):
     print(f"\n{CYAN}{BOLD}🔎 Search Results for: '{query}'{RESET}{mode_str} {DIM}(Min: {threshold}){RESET}")
     print(f"{DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{RESET}")
     
-    # Increase k if re-ranking is enabled to have enough candidates
-    initial_k = max(top_k, rerank_k) if rerank else top_k
-    results = db.search(query, top_k=initial_k)
+    # Increase k to ensure we have enough unique documents after deduplication
+    initial_k = max(top_k * 5, rerank_k) if rerank else top_k * 5
+    results = db.search_hybrid(query, top_k=initial_k)
     
     # 1. Apply Threshold filtering BEFORE reranking (optional, but saves compute)
     if threshold > 0:
@@ -124,11 +124,21 @@ def search_query(db, query, top_k, threshold=0.0, rerank=True, rerank_k=10):
     # 2. Apply Re-ranking
     if rerank and len(results) > 1:
         results = db.rerank(query, results)
-        # Trim to top_k after reranking
-        results = results[:top_k]
-    elif not rerank:
-        # Just trim to top_k if no reranking
-        results = results[:top_k]
+        
+    # 3. Deduplicate by document (rel_path)
+    # We want to show the best chunk for each unique document.
+    unique_results = []
+    seen_paths = set()
+    
+    for res in results:
+        path = res["metadata"].get("rel_path")
+        if path not in seen_paths:
+            unique_results.append(res)
+            seen_paths.add(path)
+            if len(unique_results) >= top_k:
+                break
+    
+    results = unique_results
 
     try:
         terminal_width = min(os.get_terminal_size().columns, 100)
