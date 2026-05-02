@@ -5,7 +5,7 @@ import hashlib
 import concurrent.futures
 from functools import partial
 import yaml
-from vector_db import SimpleVectorDB
+from core.vector_db import SimpleVectorDB
 
 
 def compute_file_hash(filepath):
@@ -125,7 +125,7 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
         db_path: The path to the vector database JSON file.
         model_name: The embedding model to use (optional).
     """
-    from config import EXCLUDED_DIRS, EXCLUDED_FILENAMES, SUPPORTED_EXTENSIONS
+    from core.config import EXCLUDED_DIRS, EXCLUDED_FILENAMES, SUPPORTED_EXTENSIONS
     db = SimpleVectorDB(model_name=model_name)
     if os.path.exists(db_path):
         db.load(db_path)
@@ -243,7 +243,7 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
 
 if __name__ == "__main__":
     import argparse
-    from config import DB_DEFAULT_PATH, POSTS_DIR, EXCLUDED_DIRS, EXCLUDED_FILENAMES, SUPPORTED_EXTENSIONS
+    from core.config import DB_DEFAULT_PATH, POSTS_DIR, EXCLUDED_DIRS, EXCLUDED_FILENAMES, SUPPORTED_EXTENSIONS
 
     parser = argparse.ArgumentParser(description="Thought-Search Markdown Indexer")
     parser.add_argument("--model", type=str, default=None, help="The embedding model to use.")

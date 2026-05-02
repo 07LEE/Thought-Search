@@ -1,10 +1,11 @@
+#!/usr/bin/env python3
 import json
 import os
 import numpy as np
 from sklearn.manifold import TSNE
 
 # Path configuration
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DB_PATH = os.path.join(BASE_DIR, "data", "thought-search-db.json")
 VECTOR_PATH = os.path.join(BASE_DIR, "data", "thought-search-db.vectors.npy")
 OUTPUT_PATH = os.path.join(BASE_DIR, "data", "viz-data.json")

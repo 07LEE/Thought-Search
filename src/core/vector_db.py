@@ -13,8 +13,8 @@ os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
-from config import EMBEDDING_MODEL, RERANK_MODEL
-from engines import SparseIndex, DenseIndex
+from .config import EMBEDDING_MODEL, RERANK_MODEL
+from .engines import SparseIndex, DenseIndex
 
 class SimpleVectorDB:
     def __init__(self, model_name=None, rerank_model_name=None):

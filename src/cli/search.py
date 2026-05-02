@@ -1,7 +1,7 @@
 import argparse
 import sys
 import os
-from vector_db import SimpleVectorDB
+from core.vector_db import SimpleVectorDB
 
 
 def main():
@@ -16,7 +16,7 @@ def main():
     parser.add_argument(
         "--top_k", "-k", type=int, default=3, help="Number of results to retrieve."
     )
-    from config import DB_DEFAULT_PATH
+    from core.config import DB_DEFAULT_PATH
     parser.add_argument(
         "--db", type=str, default=DB_DEFAULT_PATH, help="Path to the saved vector DB file."
     )
