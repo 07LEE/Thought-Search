@@ -4,6 +4,8 @@ let originalEdgeX = [], originalEdgeY = [], originalEdgeZ = [];
 let isUpdating = false;
 let currentThreshold = 0.80;
 let lastHighlightedIndex = null;
+let isAutoOrbit = true;
+let orbitAngle = 0;
 
 async function init() {
     try {
@@ -179,6 +181,79 @@ async function init() {
         });
 
         const plotDiv = document.getElementById('plot');
+        
+        // --- Auto-Orbit Logic ---
+        const orbitToggle = document.getElementById('orbit-toggle');
+        let isUserInteracting = false;
+
+        orbitToggle.addEventListener('change', function() {
+            isAutoOrbit = this.checked;
+            if (isAutoOrbit) requestAnimationFrame(animate);
+        });
+
+        plotDiv.addEventListener('mousedown', () => { isUserInteracting = true; });
+        window.addEventListener('mouseup', () => { isUserInteracting = false; });
+
+        // Handle Mouse Wheel (Zoom)
+        let wheelActive = false;
+        let wheelTimer;
+        plotDiv.addEventListener('wheel', () => {
+            wheelActive = true;
+            clearTimeout(wheelTimer);
+            wheelTimer = setTimeout(() => { wheelActive = false; }, 150);
+        }, { passive: true });
+
+        // Sync camera state on manual change
+        plotDiv.on('plotly_relayout', function(eventData) {
+            const eye = eventData['scene.camera.eye'] || (eventData['scene.camera'] && eventData['scene.camera'].eye);
+            if (eye) {
+                orbitAngle = Math.atan2(eye.y, eye.x);
+            }
+        });
+
+        let frameCount = 0;
+        async function animate() {
+            if (!isAutoOrbit || lastHighlightedIndex !== null || isUserInteracting) {
+                if (isAutoOrbit) requestAnimationFrame(animate);
+                return;
+            }
+            
+            // If wheeling, slow down update rate significantly to prevent jitter
+            frameCount++;
+            const throttle = wheelActive ? 5 : 2; 
+            if (frameCount % throttle !== 0) {
+                requestAnimationFrame(animate);
+                return;
+            }
+
+            const currentLayout = plotDiv.layout;
+            if (!currentLayout?.scene?.camera?.eye) {
+                requestAnimationFrame(animate);
+                return;
+            }
+
+            const currentEye = currentLayout.scene.camera.eye;
+            const radius = Math.sqrt(currentEye.x ** 2 + currentEye.y ** 2);
+            
+            // Increment angle
+            orbitAngle += wheelActive ? 0.001 : 0.004;
+            
+            const x = radius * Math.cos(orbitAngle);
+            const y = radius * Math.sin(orbitAngle);
+            
+            try {
+                // Use await to ensure the browser finishes rendering before next frame
+                await Plotly.relayout('plot', {
+                    'scene.camera.eye': { x: x, y: y, z: currentEye.z }
+                });
+            } catch (err) {}
+            
+            if (isAutoOrbit) requestAnimationFrame(animate);
+        }
+
+        // Start animation after a short delay
+        setTimeout(() => { if (isAutoOrbit) requestAnimationFrame(animate); }, 1000);
+
         plotDiv.on('plotly_click', function(eventData) {
             if (isUpdating) return;
             if (!eventData || !eventData.points || eventData.points.length === 0) { resetView(); return; }
