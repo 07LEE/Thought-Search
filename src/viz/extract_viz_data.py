@@ -133,11 +133,10 @@ def extract_visualization_data():
             if shared_tags:
                 final_score += min(0.05, 0.02 * len(shared_tags))
             
-            # Re-balanced Connection Logic:
-            # 1. Extremely strong semantic similarity (> 0.85) OR
-            # 2. Mutual interest with reasonable similarity (> 0.80)
-            if final_score > SIMILARITY_THRESHOLD or (is_reciprocal and final_score > RECIPROCAL_THRESHOLD):
-                edges.append([i, j])
+            # Connection Logic:
+            # Save edges with score for frontend filtering
+            if final_score > 0.50: # Lower threshold for data inclusion
+                edges.append([i, j, round(float(final_score), 4)])
 
     # 3. Categories and Coloring
     all_categories = []

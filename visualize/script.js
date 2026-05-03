@@ -2,6 +2,7 @@ let globalNodes = [];
 let globalEdges = [];
 let originalEdgeX = [], originalEdgeY = [], originalEdgeZ = [];
 let isUpdating = false;
+let currentThreshold = 0.80;
 
 async function init() {
     try {
@@ -39,10 +40,24 @@ async function init() {
             hoverinfo: 'text'
         };
 
-        globalEdges.forEach(edge => {
-            const s = globalNodes[edge[0]], t = globalNodes[edge[1]];
-            originalEdgeX.push(s.x, t.x, null); originalEdgeY.push(s.y, t.y, null); originalEdgeZ.push(s.z, t.z, null);
-        });
+
+        const getFilteredEdges = (threshold) => {
+            const edgeX = [], edgeY = [], edgeZ = [];
+            globalEdges.forEach(edge => {
+                const [sourceIdx, targetIdx, score] = edge;
+                if (score >= threshold) {
+                    const s = globalNodes[sourceIdx], t = globalNodes[targetIdx];
+                    edgeX.push(s.x, t.x, null); edgeY.push(s.y, t.y, null); edgeZ.push(s.z, t.z, null);
+                }
+            });
+            return { x: edgeX, y: edgeY, z: edgeZ };
+        };
+
+        const initialEdges = getFilteredEdges(currentThreshold);
+        originalEdgeX = initialEdges.x;
+        originalEdgeY = initialEdges.y;
+        originalEdgeZ = initialEdges.z;
+
         const edgeTrace = {
             x: originalEdgeX, y: originalEdgeY, z: originalEdgeZ,
             mode: 'lines', type: 'scatter3d',
@@ -135,6 +150,25 @@ async function init() {
             if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
                 searchResults.classList.remove('active');
             }
+        });
+
+        const thresholdSlider = document.getElementById('threshold-slider');
+        const thresholdVal = document.getElementById('threshold-val');
+        
+        thresholdSlider.addEventListener('input', function() {
+            currentThreshold = parseFloat(this.value);
+            thresholdVal.textContent = currentThreshold.toFixed(2);
+            
+            const newEdges = getFilteredEdges(currentThreshold);
+            originalEdgeX = newEdges.x;
+            originalEdgeY = newEdges.y;
+            originalEdgeZ = newEdges.z;
+            
+            Plotly.restyle('plot', {
+                'x': [originalEdgeX],
+                'y': [originalEdgeY],
+                'z': [originalEdgeZ]
+            }, [0]);
         });
 
         const plotDiv = document.getElementById('plot');
@@ -261,9 +295,11 @@ async function highlightNode(index) {
         const connectedIndices = new Set();
         const hX = [], hY = [], hZ = [];
         globalEdges.forEach(edge => {
-            if (edge[0] === index || edge[1] === index) {
-                connectedIndices.add(edge[0] === index ? edge[1] : edge[0]);
-                const s = globalNodes[edge[0]], t = globalNodes[edge[1]];
+            const [sIdx, tIdx, score] = edge;
+            if (score >= currentThreshold && (sIdx === index || tIdx === index)) {
+                const neighborIdx = (sIdx === index ? tIdx : sIdx);
+                connectedIndices.add(neighborIdx);
+                const s = globalNodes[sIdx], t = globalNodes[tIdx];
                 hX.push(s.x, t.x, null); hY.push(s.y, t.y, null); hZ.push(s.z, t.z, null);
             }
         });
