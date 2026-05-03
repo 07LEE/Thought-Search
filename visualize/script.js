@@ -154,12 +154,18 @@ async function highlightNode(index) {
             return `![${alt}](${stack.join('/')})`;
         });
 
-        processedContent = processedContent.replace(/^\[(#{1,6}.+?)\]/gm, '$1');
-        // --- Math Protection: Hide math from marked.js ---
-        const mathBlocks = [];
-        // Protect display math ($$, \[...\]) and inline math ($, \(...\))
-        processedContent = processedContent.replace(/\$\$(.*?)\$\$|\$(.*?)\$|\\\[(.*?)\\\]|\\\((.*?)\\\)/gs, (match) => {
-            const id = `@@MATH${mathBlocks.length}@@`;
+        // Remove context headings added by indexer (e.g., [# Heading])
+        processedContent = processedContent.replace(/^\[#{1,6}.+?\]\n+/gm, '');
+        // Protect display math ($$, \[...\])
+        processedContent = processedContent.replace(/\$\$(.*?)\$\$|\\\[(.*?)\\\]/gs, (match) => {
+            const id = `@@MATH_DISPLAY${mathBlocks.length}@@`;
+            mathBlocks.push(match);
+            return id;
+        });
+
+        // Protect inline math ($, \(...\)) - Do not use 's' flag for single $ to avoid eating multi-line blocks
+        processedContent = processedContent.replace(/\$([^$\n]+?)\$|\\\((.*?)\\\)/g, (match) => {
+            const id = `@@MATH_INLINE${mathBlocks.length}@@`;
             mathBlocks.push(match);
             return id;
         });
@@ -168,7 +174,7 @@ async function highlightNode(index) {
         let html = marked.parse(processedContent.substring(0, 5000));
         
         // --- Math Restoration: Restore math tokens ---
-        html = html.replace(/@@MATH(\d+)@@/g, (match, id) => {
+        html = html.replace(/@@MATH_(DISPLAY|INLINE)(\d+)@@/g, (match, type, id) => {
             return mathBlocks[parseInt(id)];
         });
         
