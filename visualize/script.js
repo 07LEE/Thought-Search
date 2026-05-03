@@ -65,20 +65,76 @@ async function init() {
         Plotly.newPlot('plot', [edgeTrace, nodeTrace], layout, { responsive: true, displayModeBar: false });
 
         const searchInput = document.getElementById('search-input');
+        const searchResults = document.getElementById('search-results');
+        let searchTimeout;
+
         searchInput.addEventListener('input', function() {
-            const query = this.value.toLowerCase();
-            if (!query) { resetView(); return; }
-            const matches = globalNodes.map(n => {
-                const title = (n.metadata.title || "").toLowerCase();
-                const tags = (n.metadata.tags || []).join(" ").toLowerCase();
-                const text = (n.text || "").toLowerCase();
-                return title.includes(query) || tags.includes(query) || text.includes(query);
+            clearTimeout(searchTimeout);
+            const query = this.value.trim();
+            
+            if (!query) {
+                searchResults.classList.remove('active');
+                searchResults.innerHTML = '';
+                resetView();
+                return;
+            }
+
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&k=10`);
+                    const data = await response.json();
+                    
+                    if (data.status === 'success' && data.results.length > 0) {
+                        displaySearchResults(data.results);
+                    } else {
+                        searchResults.innerHTML = '<div style="padding: 15px; color: #64748b; font-size: 0.8rem; text-align: center;">검색 결과가 없습니다.</div>';
+                        searchResults.classList.add('active');
+                    }
+                } catch (err) {
+                    console.error('Search error:', err);
+                }
+            }, 300);
+        });
+
+        function displaySearchResults(results) {
+            searchResults.innerHTML = '';
+            searchResults.classList.add('active');
+            
+            results.forEach(res => {
+                const item = document.createElement('div');
+                item.className = 'search-result-item';
+                
+                const meta = res.metadata;
+                const score = res.rerank_score || res.score;
+                const title = meta.title || meta.filename;
+                
+                item.innerHTML = `
+                    <div class="result-title">${title}</div>
+                    <div class="result-snippet">${res.text}</div>
+                    <div class="result-meta">
+                        <div class="result-score">Similarity: ${score.toFixed(4)}</div>
+                    </div>
+                `;
+                
+                item.onclick = () => {
+                    const nodeIndex = globalNodes.findIndex(n => n.metadata.rel_path === meta.rel_path);
+                    if (nodeIndex !== -1) {
+                        highlightNode(nodeIndex);
+                        searchResults.classList.remove('active');
+                    } else {
+                        alert('Graph에서 해당 문서를 찾을 수 없습니다.');
+                    }
+                };
+                
+                searchResults.appendChild(item);
             });
-            Plotly.restyle('plot', {
-                'marker.opacity': [matches.map(m => m ? 1.0 : 0.05)],
-                'marker.size': [matches.map((m, i) => m ? globalNodes[i].size * 1.5 : 2)]
-            }, [1]);
-            Plotly.restyle('plot', { 'line.color': 'rgba(0,0,0,0)' }, [0]);
+        }
+
+        // Close search results when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+                searchResults.classList.remove('active');
+            }
         });
 
         const plotDiv = document.getElementById('plot');
@@ -133,6 +189,8 @@ async function highlightNode(index) {
     try {
         const item = globalNodes[index];
         if (!item) return;
+        
+        let mathBlocks = [];
 
         document.getElementById('info-title').textContent = item.metadata.title || item.metadata.filename;
         document.getElementById('info-path').textContent = item.metadata.rel_path;

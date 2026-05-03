@@ -1,4 +1,13 @@
 import os
+from pathlib import Path
+
+# Project Root
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+MODELS_DIR = BASE_DIR / "models"
+
+# Set HuggingFace Cache to local models directory
+os.environ["HF_HOME"] = str(MODELS_DIR)
+os.environ["TRANSFORMERS_CACHE"] = str(MODELS_DIR)
 
 # Default AI Model (can be overridden by environment variable)
 EMBEDDING_MODEL = os.getenv("THOUGHT_SEARCH_MODEL", "jhgan/ko-sroberta-multitask")

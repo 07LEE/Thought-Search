@@ -32,6 +32,14 @@ class SimpleVectorDB:
         self.metadata = []
         self.file_hashes = {}
 
+    def pre_load_models(self):
+        """Pre-loads the embedding and re-ranking models into memory."""
+        print(f"LOGE: [VectorDB] Pre-loading models...")
+        # Dense engine already initializes its model in its constructor
+        if self.reranker is None:
+            self.reranker = CrossEncoder(self.rerank_model_name)
+        print(f"LOGE: [VectorDB] All models loaded.")
+
     def add_texts(self, texts, metadatas=None):
         """Calculates embeddings for a list of texts, normalizes them, and adds them to the database.
 
