@@ -3,6 +3,7 @@ let globalEdges = [];
 let originalEdgeX = [], originalEdgeY = [], originalEdgeZ = [];
 let isUpdating = false;
 let currentThreshold = 0.80;
+let lastHighlightedIndex = null;
 
 async function init() {
     try {
@@ -159,16 +160,22 @@ async function init() {
             currentThreshold = parseFloat(this.value);
             thresholdVal.textContent = currentThreshold.toFixed(2);
             
-            const newEdges = getFilteredEdges(currentThreshold);
-            originalEdgeX = newEdges.x;
-            originalEdgeY = newEdges.y;
-            originalEdgeZ = newEdges.z;
-            
-            Plotly.restyle('plot', {
-                'x': [originalEdgeX],
-                'y': [originalEdgeY],
-                'z': [originalEdgeZ]
-            }, [0]);
+            if (lastHighlightedIndex !== null) {
+                // If in highlight mode, re-trigger highlight with new threshold
+                highlightNode(lastHighlightedIndex);
+            } else {
+                // Normal mode: update all edges
+                const newEdges = getFilteredEdges(currentThreshold);
+                originalEdgeX = newEdges.x;
+                originalEdgeY = newEdges.y;
+                originalEdgeZ = newEdges.z;
+                
+                Plotly.restyle('plot', {
+                    'x': [originalEdgeX],
+                    'y': [originalEdgeY],
+                    'z': [originalEdgeZ]
+                }, [0]);
+            }
         });
 
         const plotDiv = document.getElementById('plot');
@@ -218,8 +225,9 @@ async function init() {
 }
 
 async function highlightNode(index) {
-    if (isUpdating) return;
+    if (isUpdating && lastHighlightedIndex !== index) return;
     isUpdating = true;
+    lastHighlightedIndex = index;
     try {
         const item = globalNodes[index];
         if (!item) return;
@@ -351,6 +359,7 @@ async function resetView() {
 
         document.getElementById('info-panel').classList.remove('active');
         document.getElementById('search-input').value = '';
+        lastHighlightedIndex = null;
     } catch (e) { console.error('Reset error:', e); }
     finally { setTimeout(() => { isUpdating = false; }, 100); }
 }
