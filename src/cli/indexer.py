@@ -41,12 +41,13 @@ def chunk_text(text, max_chunk_size=800):
         if not p_stripped:
             continue
             
-        # Update context if a heading is found to help the LLM/Vector model understand semantic belonging.
+        # Update context if a heading is found. 
+        # Clean stylistic noise like English translations in parentheses: "Header (English)" -> "Header"
         if p_stripped.startswith('#'):
-            current_heading = p_stripped.split('\n')[0]
+            raw_heading = p_stripped.split('\n')[0]
+            current_heading = re.sub(r'\s*\([^)]*\)', '', raw_heading).strip()
             
         # If adding the next paragraph breaches the max limit, flush the current chunk to the results
-        # and re-inject the active heading recursively into the new chunk.
         if len(current_chunk) + len(p_stripped) > max_chunk_size and current_chunk:
             valid_chunks.append(current_chunk.strip())
             current_chunk = f"[{current_heading}]\n\n" if current_heading else ""
@@ -101,6 +102,10 @@ def parse_markdown(filepath, rel_path=""):
 
     # Extract categories from the directory structure
     categories = [p for p in os.path.dirname(rel_path).split(os.sep) if p]
+
+    # Clean stylistic noise in the body text (e.g., "## Header (English)" -> "## Header")
+    # This prevents the style from influencing semantic similarity.
+    raw_text = re.sub(r'^(#+ .*?)\s*\([^)]*\)', r'\1', raw_text, flags=re.MULTILINE)
 
     chunks = chunk_text(raw_text)
     meta = {

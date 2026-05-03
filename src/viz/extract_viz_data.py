@@ -38,9 +38,26 @@ def extract_visualization_data():
     file_texts = []
     
     for path, indices in file_groups.items():
-        # 1. Aggregate vectors (Mean pooling)
-        avg_vector = np.mean(vectors[indices], axis=0)
-        file_vectors.append(avg_vector)
+        # 1. Aggregate vectors using Weighted Mean Pooling
+        # Weight chunks by their length (log-scale to prevent long docs from dominating too much)
+        chunk_weights = []
+        valid_indices = []
+        
+        for idx in indices:
+            text_len = len(documents[idx])
+            if text_len < 10: continue # Skip extremely short noise
+            
+            weight = np.log1p(text_len) # log(1 + length)
+            chunk_weights.append(weight)
+            valid_indices.append(idx)
+        
+        if not valid_indices: # Fallback to original if all filtered
+            valid_indices = indices
+            chunk_weights = [1.0] * len(indices)
+            
+        weights = np.array(chunk_weights).reshape(-1, 1)
+        weighted_vector = np.sum(vectors[valid_indices] * weights, axis=0) / np.sum(weights)
+        file_vectors.append(weighted_vector)
         
         # 2. Use first chunk's metadata as representative
         file_metadata.append(metadata[indices[0]])
@@ -72,28 +89,55 @@ def extract_visualization_data():
     )
     vectors_3d = tsne.fit_transform(file_vectors_norm)
 
-    # 2. Calculate Connectivity (Document-level)
+    # 2. Calculate Connectivity (Document-level) with Reciprocal Verification
     sim_matrix = np.dot(file_vectors_norm, file_vectors_norm.T)
+    BROAD_TAGS = {"linux", "ubuntu", "optimization", "guide", "setup"} 
     
-    edges = []
-    SIMILARITY_THRESHOLD = 0.70 
-    BROAD_TAGS = {"linux", "ubuntu"} 
-    
+    # Pre-calculate RAW candidates for all nodes (Semantic-only)
+    adj_list = []
     for i in range(len(sim_matrix)):
-        top_indices = np.argsort(sim_matrix[i])[::-1][1:5] 
-        source_tags = set(file_metadata[i].get("tags", []))
-        
-        for j in top_indices:
-            score = sim_matrix[i, j]
-            target_tags = set(file_metadata[j].get("tags", []))
+        top_indices = np.argsort(sim_matrix[i])[::-1][1:16] # Expanded to top 15
+        candidates = {int(j): float(sim_matrix[i, j]) for j in top_indices}
+        adj_list.append(candidates)
+
+    edges = []
+    SIMILARITY_THRESHOLD = 0.85 # One-way connection allowed if extremely strong
+    RECIPROCAL_THRESHOLD = 0.80 # Mutual connection allowed at a more reasonable level
+    
+    for i in range(len(adj_list)):
+        for j, raw_score in adj_list[i].items():
+            if i >= j: continue
             
-            shared_tags = source_tags.intersection(target_tags)
-            if shared_tags - BROAD_TAGS:
-                score += 0.1
-                
-            if score > SIMILARITY_THRESHOLD:
-                if i < j:
-                    edges.append([i, int(j)])
+            is_reciprocal = i in adj_list[j]
+            source_meta = file_metadata[i]
+            target_meta = file_metadata[j]
+            source_cats = source_meta.get("categories", [])
+            target_cats = target_meta.get("categories", [])
+            source_tags = set(source_meta.get("tags", []))
+            target_tags = set(target_meta.get("tags", []))
+            
+            # Subtle metadata nudge
+            final_score = raw_score
+            if source_cats and target_cats:
+                if source_cats[0] != target_cats[0]:
+                    final_score -= 0.02 # Subtle penalty for domain mismatch
+                else:
+                    shared_depth = 0
+                    for c1, c2 in zip(source_cats, target_cats):
+                        if c1 == c2: shared_depth += 1
+                        else: break
+                    final_score += 0.02 * shared_depth # Increased bonus for same domain/folder
+            
+            # Tag Bonus
+            shared_tags = source_tags.intersection(target_tags) - BROAD_TAGS
+            if shared_tags:
+                final_score += min(0.05, 0.02 * len(shared_tags))
+            
+            # Re-balanced Connection Logic:
+            # 1. Extremely strong semantic similarity (> 0.85) OR
+            # 2. Mutual interest with reasonable similarity (> 0.80)
+            if final_score > SIMILARITY_THRESHOLD or (is_reciprocal and final_score > RECIPROCAL_THRESHOLD):
+                edges.append([i, j])
 
     # 3. Categories and Coloring
     all_categories = []
