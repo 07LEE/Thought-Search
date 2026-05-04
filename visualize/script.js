@@ -9,7 +9,23 @@ let orbitAngle = 0;
 
 async function init() {
     try {
-        marked.setOptions({ gfm: true, breaks: true, headerIds: false, mangle: false });
+        // --- Markdown & Table Setup ---
+        marked.use({
+            hooks: {
+                postprocess(html) {
+                    // 모든 <table> 태그를 .table-wrapper div로 감쌉니다.
+                    return html.replace(/<table>/g, '<div class="table-wrapper"><table>')
+                               .replace(/<\/table>/g, '</table></div>');
+                }
+            }
+        });
+
+        marked.setOptions({ 
+            gfm: true, 
+            breaks: true, 
+            headerIds: false, 
+            mangle: false 
+        });
 
         const response = await fetch('/data/viz-data.json');
         const data = await response.json();
