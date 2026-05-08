@@ -108,11 +108,11 @@ Visualize your knowledge base in an interactive 3D space:
 # 1. Extract visualization data (t-SNE 3D reduction)
 python src/viz/extract_viz_data.py
 
-# 2. Start a local web server
-python3 -m http.server 8000
+# 2. Start the integrated search & visualization server
+./run.sh --viz
 
 # 3. Open in your browser
-# URL: http://localhost:8000/visualize/
+# URL: http://localhost:8080
 ```
 
 **Features:**
