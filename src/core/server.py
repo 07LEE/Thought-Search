@@ -56,6 +56,10 @@ def sync_db():
         print("LOGE: [Server] Running viz data extractor...")
         extract_visualization_data()
         
+        # 3. Reload Database to sync memory with disk
+        print("LOGE: [Server] Reloading database...")
+        db.load(DB_DEFAULT_PATH)
+        
         return jsonify({
             "status": "success", 
             "message": "Database and visualization data updated successfully."
