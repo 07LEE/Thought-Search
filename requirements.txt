@@ -1,3 +1,6 @@
 sentence-transformers
 numpy
 PyYAML
+faiss-cpu
+flask
+flask-cors

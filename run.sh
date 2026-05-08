@@ -13,6 +13,7 @@ CYAN="\033[36m"
 GREEN="\033[32m"
 YELLOW="\033[33m"
 RESET="\033[0m"
+export PYTHONPATH=$BASE_DIR/src
 
 echo -e "${CYAN}${BOLD}🚀 Thought-Search System Initializing...${RESET}"
 
@@ -28,9 +29,16 @@ else
     echo -e "${YELLOW}⚠ Warning: No virtual environment detected. Proceeding with system python...${RESET}"
 fi
 
+# Check for Visualization Mode
+if [ "$1" == "--viz" ]; then
+    echo -e "${CYAN}${BOLD}🌐 Launching Visualization Server at http://localhost:8080...${RESET}"
+    python3 src/core/server.py
+    exit 0
+fi
+
 # 3. Synchronize Knowledge (Auto-Indexing)
 echo -e "${CYAN}${BOLD}📂 Syncing Knowledge Base...${RESET}"
-python3 src/indexer.py
+python3 src/cli/indexer.py
 if [ $? -ne 0 ]; then
     echo -e "\033[31m✖ Error: Indexing failed. Please check your document structure.${RESET}"
     exit 1
@@ -39,8 +47,8 @@ fi
 # 4. Launch Search Engine
 if [ $# -eq 0 ]; then
     # No arguments: Interactive Mode
-    python3 src/search.py
+    python3 src/cli/search.py
 else
     # Arguments provided: Direct Search
-    python3 src/search.py "$@"
+    python3 src/cli/search.py "$@"
 fi

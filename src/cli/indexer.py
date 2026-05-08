@@ -5,7 +5,7 @@ import hashlib
 import concurrent.futures
 from functools import partial
 import yaml
-from vector_db import SimpleVectorDB
+from core.vector_db import SimpleVectorDB
 
 
 def compute_file_hash(filepath):
@@ -41,12 +41,13 @@ def chunk_text(text, max_chunk_size=800):
         if not p_stripped:
             continue
             
-        # Update context if a heading is found to help the LLM/Vector model understand semantic belonging.
+        # Update context if a heading is found. 
+        # Clean stylistic noise like English translations in parentheses: "Header (English)" -> "Header"
         if p_stripped.startswith('#'):
-            current_heading = p_stripped.split('\n')[0]
+            raw_heading = p_stripped.split('\n')[0]
+            current_heading = re.sub(r'\s*\([^)]*\)', '', raw_heading).strip()
             
         # If adding the next paragraph breaches the max limit, flush the current chunk to the results
-        # and re-inject the active heading recursively into the new chunk.
         if len(current_chunk) + len(p_stripped) > max_chunk_size and current_chunk:
             valid_chunks.append(current_chunk.strip())
             current_chunk = f"[{current_heading}]\n\n" if current_heading else ""
@@ -102,6 +103,10 @@ def parse_markdown(filepath, rel_path=""):
     # Extract categories from the directory structure
     categories = [p for p in os.path.dirname(rel_path).split(os.sep) if p]
 
+    # Clean stylistic noise in the body text (e.g., "## Header (English)" -> "## Header")
+    # This prevents the style from influencing semantic similarity.
+    raw_text = re.sub(r'^(#+ .*?)\s*\([^)]*\)', r'\1', raw_text, flags=re.MULTILINE)
+
     chunks = chunk_text(raw_text)
     meta = {
         "filename": filename, 
@@ -125,7 +130,7 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
         db_path: The path to the vector database JSON file.
         model_name: The embedding model to use (optional).
     """
-    from config import EXCLUDED_DIRS, EXCLUDED_FILENAMES, SUPPORTED_EXTENSIONS
+    from core.config import EXCLUDED_DIRS, EXCLUDED_FILENAMES, SUPPORTED_EXTENSIONS
     db = SimpleVectorDB(model_name=model_name)
     if os.path.exists(db_path):
         db.load(db_path)
@@ -243,7 +248,7 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
 
 if __name__ == "__main__":
     import argparse
-    from config import DB_DEFAULT_PATH, POSTS_DIR, EXCLUDED_DIRS, EXCLUDED_FILENAMES, SUPPORTED_EXTENSIONS
+    from core.config import DB_DEFAULT_PATH, POSTS_DIR, EXCLUDED_DIRS, EXCLUDED_FILENAMES, SUPPORTED_EXTENSIONS
 
     parser = argparse.ArgumentParser(description="Thought-Search Markdown Indexer")
     parser.add_argument("--model", type=str, default=None, help="The embedding model to use.")

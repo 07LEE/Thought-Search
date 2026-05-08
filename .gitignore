@@ -1,6 +1,8 @@
 # Environments
 .venv/
 .env
+.envrc
+.direnv/
 
 # Python caches
 __pycache__/
@@ -17,3 +19,4 @@ __pycache__/
 .local/
 posts
 data/
+models/
