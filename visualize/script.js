@@ -134,6 +134,15 @@ async function init() {
             searchResults.innerHTML = '';
             searchResults.classList.add('active');
             
+            const resultPaths = new Set(results.map(res => res.metadata.rel_path));
+            const resultIndices = new Set();
+            
+            globalNodes.forEach((node, i) => {
+                if (resultPaths.has(node.metadata.rel_path)) {
+                    resultIndices.add(i);
+                }
+            });
+
             results.forEach(res => {
                 const item = document.createElement('div');
                 item.className = 'search-result-item';
@@ -162,6 +171,14 @@ async function init() {
                 
                 searchResults.appendChild(item);
             });
+
+            // Update graph to highlight search results
+            if (resultIndices.size > 0) {
+                Plotly.restyle('plot', {
+                    'marker.opacity': [globalNodes.map((n, i) => resultIndices.has(i) ? 1.0 : 0.05)],
+                    'marker.size': [globalNodes.map((n, i) => resultIndices.has(i) ? n.size * 1.5 : 2)]
+                }, [1]);
+            }
         }
 
         // Close search results when clicking outside
