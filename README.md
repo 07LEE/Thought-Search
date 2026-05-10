@@ -10,6 +10,8 @@ Thought-Search is a CLI tool that builds a local vector database from Markdown f
 
 - **Semantic Search:** Uses cosine similarity to match query vectors against indexed document chunks.
 - **Hybrid Search:** Combines semantic (Vector) and keyword (BM25) search using Reciprocal Rank Fusion (RRF) for superior accuracy.
+- **Korean Morphological Analysis:** Integrated with `kiwipiepy` (Kiwi) for precise Korean tokenization and particle removal.
+- **Custom Dictionary:** Supports external dictionary management via `Thought-Dictionary` to protect technical terms (e.g., 3DGS, COLMAP).
 - **Markdown Parsing:** Splits raw `.md` files into paragraph-level chunks for indexing.
 - **Local Embedding:** Generates text embeddings locally using a configurable `sentence-transformers` model.
 - **Hierarchical Support:** Recursively searches for markdown files in subdirectories.
@@ -68,6 +70,10 @@ conda activate thought-search
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Install Custom Dictionary Manager (Optional but Recommended for Korean)
+# Path should be where you cloned Thought-Dictionary
+pip install -e /path/to/Thought-Dictionary
 ```
 
 ### 2. Configuration

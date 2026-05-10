@@ -4,3 +4,5 @@ PyYAML
 faiss-cpu
 flask
 flask-cors
+kiwipiepy
+thought-dictionary @ git+https://github.com/07LEE/Thought-Dictionary.git

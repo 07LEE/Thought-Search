@@ -1,7 +1,10 @@
 import re
+import os
 import math
 import numpy as np
 from collections import Counter
+from kiwipiepy import Kiwi
+from thought_dict.manager import DictionaryManager
 
 class SparseIndex:
     """Handles BM25-based sparse search logic for keyword-based retrieval.
@@ -27,17 +30,38 @@ class SparseIndex:
         self.doc_lengths = []  # Length of each document
         self.k1 = 1.5
         self.b = 0.75
+        
+        # Initialize Kiwi with Custom Dictionary Manager
+        self.dict_manager = DictionaryManager()
+        # Automatically load dictionaries from the package or environment override
+        self.dict_manager.load_default_dicts()
+        
+        self.kiwi = self.dict_manager.get_kiwi()
 
     def _tokenize(self, text):
-        """Simple alphanumeric tokenizer for BM25.
+        """Morphological tokenizer for BM25 using Kiwi.
 
         Args:
             text (str): The raw text to tokenize.
 
         Returns:
-            list[str]: A list of alphanumeric tokens in lowercase.
+            list[str]: A list of meaningful tokens (nouns, verbs, etc.).
         """
-        return re.findall(r'\w+', text.lower())
+        if not text:
+            return []
+
+        # Using Kiwi for high-quality Korean tokenization
+        tokens = self.kiwi.tokenize(text.lower())
+        
+        # Extract only meaningful tags:
+        # N: Nouns, V: Verbs/Adjectives, SL: Foreign words, SN: Numbers
+        result = [t.form for t in tokens if t.tag.startswith('N') or t.tag.startswith('V') or t.tag in ['SL', 'SN']]
+        
+        # Fallback for short texts or non-Korean snippets that Kiwi might skip
+        if not result:
+            return re.findall(r'\w+', text.lower())
+            
+        return result
 
     def rebuild(self, documents):
         """Rebuilds the BM25 index from the provided document collection.
