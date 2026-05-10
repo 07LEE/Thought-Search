@@ -34,7 +34,7 @@ class SparseIndex:
         # Initialize Kiwi with Custom Dictionary Manager
         self.dict_manager = DictionaryManager()
         # Automatically load dictionaries from the package or environment override
-        self.dict_manager.load_default_dicts()
+        self.dict_manager.load_dict()
         
         self.kiwi = self.dict_manager.get_kiwi()
 
