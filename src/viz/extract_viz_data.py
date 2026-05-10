@@ -77,7 +77,7 @@ def extract_visualization_data():
     norms = np.linalg.norm(file_vectors, axis=1, keepdims=True)
     file_vectors_norm = file_vectors / (norms + 1e-10)
     
-    perplexity = min(30, len(file_vectors) - 1)
+    perplexity = min(50, len(file_vectors) - 1)
     print(f"Running t-SNE 3D (perplexity={perplexity})...")
     
     tsne = TSNE(

@@ -105,7 +105,8 @@ def parse_markdown(filepath, rel_path=""):
 
     # Clean stylistic noise in the body text (e.g., "## Header (English)" -> "## Header")
     # This prevents the style from influencing semantic similarity.
-    raw_text = re.sub(r'^(#+ .*?)\s*\([^)]*\)', r'\1', raw_text, flags=re.MULTILINE)
+    # Remove code blocks to improve semantic embedding purity for clustering
+    raw_text = re.sub(r'```.*?```', '', raw_text, flags=re.DOTALL)
 
     chunks = chunk_text(raw_text)
     meta = {
