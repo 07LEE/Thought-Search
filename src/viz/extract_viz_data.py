@@ -96,7 +96,7 @@ def extract_visualization_data():
     # Pre-calculate RAW candidates for all nodes (Semantic-only)
     adj_list = []
     for i in range(len(sim_matrix)):
-        top_indices = np.argsort(sim_matrix[i])[::-1][1:16] # Expanded to top 15
+        top_indices = np.argsort(sim_matrix[i])[::-1][1:11] # Reduced to top 10
         candidates = {int(j): float(sim_matrix[i, j]) for j in top_indices}
         adj_list.append(candidates)
 
@@ -120,7 +120,7 @@ def extract_visualization_data():
             final_score = raw_score
             if source_cats and target_cats:
                 if source_cats[0] != target_cats[0]:
-                    final_score -= 0.02 # Subtle penalty for domain mismatch
+                    final_score -= 0.05 # Strengthened penalty for domain mismatch
                 else:
                     shared_depth = 0
                     for c1, c2 in zip(source_cats, target_cats):
@@ -133,9 +133,9 @@ def extract_visualization_data():
             if shared_tags:
                 final_score += min(0.05, 0.02 * len(shared_tags))
             
-            # Connection Logic:
-            # Save edges with score for frontend filtering
-            if final_score > 0.50: # Lower threshold for data inclusion
+            # Connection Logic: Mandatory Reciprocal Verification
+            # Only connect if BOTH documents are in each other's top-k
+            if is_reciprocal and final_score >= RECIPROCAL_THRESHOLD:
                 edges.append([i, j, round(float(final_score), 4)])
 
     # 3. Categories and Coloring

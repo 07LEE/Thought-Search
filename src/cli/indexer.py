@@ -21,6 +21,12 @@ def compute_file_hash(filepath):
         return hashlib.sha256(f.read()).hexdigest()
 
 
+GENERIC_HEADERS = {
+    "요약", "인사이트", "결론", "개요", "배경", "참고 문헌", "특징", "개념",
+    "summary", "insight", "conclusion", "overview", "background", "references", "features", "concept"
+}
+
+
 def chunk_text(text, max_chunk_size=800):
     """Splits text semantically by paragraphs while preserving markdown heading context.
 
@@ -45,7 +51,16 @@ def chunk_text(text, max_chunk_size=800):
         # Clean stylistic noise like English translations in parentheses: "Header (English)" -> "Header"
         if p_stripped.startswith('#'):
             raw_heading = p_stripped.split('\n')[0]
-            current_heading = re.sub(r'\s*\([^)]*\)', '', raw_heading).strip()
+            # Remove markdown hash symbols for clean context
+            clean_heading = re.sub(r'^#+\s*', '', raw_heading)
+            # Remove stylistic noise (English pairing)
+            clean_heading = re.sub(r'\s*\([^)]*\)', '', clean_heading).strip()
+            
+            # If the heading is too generic, do not use it as context to avoid semantic noise
+            if clean_heading.lower() in GENERIC_HEADERS:
+                current_heading = ""
+            else:
+                current_heading = clean_heading
             
         # If adding the next paragraph breaches the max limit, flush the current chunk to the results
         if len(current_chunk) + len(p_stripped) > max_chunk_size and current_chunk:
