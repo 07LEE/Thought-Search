@@ -2,7 +2,7 @@
 import json
 import os
 import numpy as np
-from sklearn.manifold import TSNE
+import umap
 
 # Path configuration
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -73,23 +73,23 @@ def extract_visualization_data():
         print("Not enough documents for visualization.")
         return
 
-    # 1. Dimensionality Reduction using t-SNE (3D)
-    norms = np.linalg.norm(file_vectors, axis=1, keepdims=True)
-    file_vectors_norm = file_vectors / (norms + 1e-10)
+    # 1. Dimensionality Reduction using UMAP (3D)
+    # UMAP natively supports cosine metric and preserves global structure better than t-SNE
+    print(f"Running UMAP 3D (n_neighbors=30, metric='cosine')...")
     
-    perplexity = min(50, len(file_vectors) - 1)
-    print(f"Running t-SNE 3D (perplexity={perplexity})...")
-    
-    tsne = TSNE(
-        n_components=3, 
-        perplexity=perplexity, 
-        random_state=42, 
-        init='pca', 
-        learning_rate='auto'
+    reducer = umap.UMAP(
+        n_neighbors=30,
+        min_dist=0.3,
+        n_components=3,
+        metric='cosine',
+        random_state=42,
+        low_memory=False
     )
-    vectors_3d = tsne.fit_transform(file_vectors_norm)
+    vectors_3d = reducer.fit_transform(file_vectors)
 
     # 2. Calculate Connectivity (Document-level) with Reciprocal Verification
+    norms = np.linalg.norm(file_vectors, axis=1, keepdims=True)
+    file_vectors_norm = file_vectors / (norms + 1e-10)
     sim_matrix = np.dot(file_vectors_norm, file_vectors_norm.T)
     BROAD_TAGS = {"linux", "ubuntu", "optimization", "guide", "setup"} 
     

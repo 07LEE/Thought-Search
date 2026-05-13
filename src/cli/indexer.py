@@ -122,6 +122,8 @@ def parse_markdown(filepath, rel_path=""):
     # This prevents the style from influencing semantic similarity.
     # Remove code blocks to improve semantic embedding purity for clustering
     raw_text = re.sub(r'```.*?```', '', raw_text, flags=re.DOTALL)
+    # Remove URLs (http/https) to prevent them from influencing semantic similarity (Noise reduction)
+    raw_text = re.sub(r'https?://\S+', '', raw_text)
 
     chunks = chunk_text(raw_text)
     meta = {
