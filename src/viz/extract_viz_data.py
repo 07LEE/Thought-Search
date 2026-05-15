@@ -63,7 +63,8 @@ def extract_visualization_data():
         file_metadata.append(metadata[indices[0]])
         
         # 3. Combine text for the whole file
-        full_text = "\n\n".join([documents[i] for i in indices])
+        # Prioritize display_text from metadata (which contains code blocks)
+        full_text = "\n\n".join([metadata[i].get("display_text", documents[i]) for i in indices])
         file_texts.append(full_text)
         
     file_vectors = np.array(file_vectors)

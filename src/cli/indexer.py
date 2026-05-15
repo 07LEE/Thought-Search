@@ -120,22 +120,42 @@ def parse_markdown(filepath, rel_path=""):
 
     # Clean stylistic noise in the body text (e.g., "## Header (English)" -> "## Header")
     # This prevents the style from influencing semantic similarity.
-    # Remove code blocks to improve semantic embedding purity for clustering
-    raw_text = re.sub(r'```.*?```', '', raw_text, flags=re.DOTALL)
-    # Remove URLs (http/https) to prevent them from influencing semantic similarity (Noise reduction)
-    raw_text = re.sub(r'https?://\S+', '', raw_text)
+    # Note: Code blocks are NOT removed here anymore to allow reconstruction in display_text.
+    # We instead clean them per chunk to separate search vs display context.
 
-    chunks = chunk_text(raw_text)
-    meta = {
-        "filename": filename, 
-        "rel_path": rel_path,
-        "source_path": filepath, 
-        "title": title, 
-        "tags": tags,
-        "categories": categories
-    }
+    # 1. Chunk the ORIGINAL text first to preserve full context including code blocks
+    raw_chunks = chunk_text(raw_text)
+    
+    # 2. For each chunk, create a clean version for indexing and keep the raw version for display
+    search_chunks = []
+    final_metadatas = []
+    
+    for chunk in raw_chunks:
+        # Create a search-optimized version by stripping code blocks
+        clean_chunk = re.sub(r'```.*?```', '', chunk, flags=re.DOTALL).strip()
+        
+        # If the chunk becomes too empty after stripping code, 
+        # we still keep it but use the original chunk as fallback for search context 
+        # or just use a minimal version to avoid zero-length errors.
+        if len(clean_chunk) < 10:
+            # Fallback: Just use the headers if any, or a small snippet
+            clean_chunk = chunk[:50] 
 
-    return chunks, meta
+        search_chunks.append(clean_chunk)
+        
+        # Store metadata
+        meta = {
+            "filename": filename, 
+            "rel_path": rel_path,
+            "source_path": filepath, 
+            "title": title, 
+            "tags": tags,
+            "categories": categories,
+            "display_text": chunk # Store the RAW chunk for viz
+        }
+        final_metadatas.append(meta)
+
+    return search_chunks, final_metadatas
 
 
 def index_markdown_files(posts_dir, db_path, model_name=None):
@@ -246,7 +266,7 @@ def index_markdown_files(posts_dir, db_path, model_name=None):
                     chunks, meta = future.result()
                     if chunks:
                         all_chunks.extend(chunks)
-                        all_metadata.extend([meta] * len(chunks)) # Duplicate meta for each chunk
+                        all_metadata.extend(meta) # meta is now a list of metadatas per chunk
                         db.file_hashes[rel_path] = compute_file_hash(filepath)
                         print(f"LOGE: [Indexer] Indexed: {rel_path} ({len(chunks)} chunks)")
                     else:

@@ -4,7 +4,7 @@ import math
 import numpy as np
 from collections import Counter
 from kiwipiepy import Kiwi
-from thought_dict.manager import DictionaryManager
+from personal_dict.manager import DictionaryManager
 
 class SparseIndex:
     """Handles BM25-based sparse search logic for keyword-based retrieval.

@@ -1,9 +1,5 @@
 # Thought-Search
 
-Thought-Search is a CLI tool that builds a local vector database from Markdown files for semantic search. It now supports hierarchical directory structures and automatic category extraction.
-
----
-
 ## Features
 
 ### Text Processing & Embedding
@@ -11,12 +7,12 @@ Thought-Search is a CLI tool that builds a local vector database from Markdown f
 - **Semantic Search:** Uses cosine similarity to match query vectors against indexed document chunks.
 - **Hybrid Search:** Combines semantic (Vector) and keyword (BM25) search using Reciprocal Rank Fusion (RRF) for superior accuracy.
 - **Korean Morphological Analysis:** Integrated with `kiwipiepy` (Kiwi) for precise Korean tokenization and particle removal.
-- **Custom Dictionary:** Supports external dictionary management via `Thought-Dictionary` to protect technical terms (e.g., 3DGS, COLMAP).
+- **Custom Dictionary:** Supports external dictionary management via `Personal-Dictionary` to protect technical terms (e.g., 3DGS, COLMAP).
 - **Markdown Parsing:** Splits raw `.md` files into paragraph-level chunks for indexing.
 - **Local Embedding:** Generates text embeddings locally using a configurable `sentence-transformers` model.
 - **Hierarchical Support:** Recursively searches for markdown files in subdirectories.
 - **Category Extraction:** Automatically extracts folder names from the directory structure and stores them as `categories` metadata.
-- **3D Knowledge Graph:** Interactive 3D visualization of semantic relationships between documents using t-SNE dimensionality reduction and Plotly.js.
+- **3D Knowledge Graph:** Interactive 3D visualization of semantic relationships between documents using UMAP dimensionality reduction and Plotly.js.
 
 ### Architecture & Storage
 
@@ -72,8 +68,8 @@ conda activate thought-search
 pip install -r requirements.txt
 
 # Install Custom Dictionary Manager (Optional but Recommended for Korean)
-# Path should be where you cloned Thought-Dictionary
-pip install -e /path/to/Thought-Dictionary
+# Path should be where you cloned Personal-Dictionary
+pip install -e /path/to/Personal-Dictionary
 ```
 
 ### 2. Configuration
@@ -111,7 +107,7 @@ python src/cli/search.py "Your query here"
 Visualize your knowledge base in an interactive 3D space:
 
 ```bash
-# 1. Extract visualization data (t-SNE 3D reduction)
+# 1. Extract visualization data (UMAP 3D reduction)
 python src/viz/extract_viz_data.py
 
 # 2. Start the integrated search & visualization server
@@ -120,6 +116,8 @@ python src/viz/extract_viz_data.py
 # 3. Open in your browser
 # URL: http://localhost:8080
 ```
+
+![Thought-Search Visualization](./docs/assets/viz_demo.webp)
 
 **Features:**
 

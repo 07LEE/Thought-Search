@@ -7,7 +7,7 @@ from kiwipiepy import Kiwi
 
 # Try to import custom dictionary manager, but don't fail if missing
 try:
-    from thought_dict import DictionaryManager
+    from personal_dict import DictionaryManager
     HAS_DICT_MANAGER = True
 except ImportError:
     HAS_DICT_MANAGER = False
