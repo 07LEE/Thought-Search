@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import colorsys
 import numpy as np
 import umap
 
@@ -139,20 +140,73 @@ def extract_visualization_data():
             if is_reciprocal and final_score >= RECIPROCAL_THRESHOLD:
                 edges.append([i, j, round(float(final_score), 4)])
 
-    # 3. Categories and Coloring
-    all_categories = []
+    # 3. Hierarchical Categories and Vivid HSL Coloring
+    def rgb_to_hls(r, g, b):
+        return colorsys.rgb_to_hls(r/255.0, g/255.0, b/255.0)
+
+    def hls_to_hex(h, l, s):
+        r, g, b = colorsys.hls_to_rgb(h, l, s)
+        return f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
+
+    def hex_to_hls(hex_str):
+        hex_str = hex_str.lstrip('#')
+        r = int(hex_str[0:2], 16)
+        g = int(hex_str[2:4], 16)
+        b = int(hex_str[4:6], 16)
+        return rgb_to_hls(r, g, b)
+
+    vivid_palette = ['#38bdf8', '#fb7185', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#2dd4bf', '#60a5fa']
+
+    parent_categories = []
+    hierarchical_categories = []
     for m in file_metadata:
-        cat = m.get("categories", ["Uncategorized"])[0]
-        all_categories.append(cat)
+        cats = m.get("categories", ["Uncategorized"])
+        parent = cats[0]
+        sub = cats[1] if len(cats) > 1 else "General"
+        parent_categories.append(parent)
+        hierarchical_categories.append((parent, sub))
+        
+    unique_parents = sorted(list(set(parent_categories)))
     
-    unique_cats = sorted(list(set(all_categories)))
-    palette = ['#38bdf8', '#fb7185', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#2dd4bf', '#60a5fa']
-    cat_to_color = {cat: palette[i % len(palette)] for i, cat in enumerate(unique_cats)}
+    parent_to_subs = {}
+    for parent, sub in hierarchical_categories:
+        if parent not in parent_to_subs:
+            parent_to_subs[parent] = set()
+        parent_to_subs[parent].add(sub)
+        
+    parent_to_sorted_subs = {parent: sorted(list(subs)) for parent, subs in parent_to_subs.items()}
+    
+    parent_base_colors = {}
+    for idx, parent in enumerate(unique_parents):
+        hex_color = vivid_palette[idx % len(vivid_palette)]
+        h, l, s = hex_to_hls(hex_color)
+        parent_base_colors[parent] = (h, l, s, hex_color)
+        
+    hierarchical_colors = {}
+    for parent, subs in parent_to_sorted_subs.items():
+        base_h, base_l, base_s, base_hex = parent_base_colors[parent]
+        num_subs = len(subs)
+        
+        for sub_idx, sub in enumerate(subs):
+            if num_subs <= 1:
+                lightness = base_l
+                saturation = base_s
+            else:
+                lightness_offset = -0.22 + (sub_idx * 0.44 / (num_subs - 1))
+                saturation_offset = -0.15 + (sub_idx * 0.25 / (num_subs - 1))
+                lightness = max(0.30, min(0.90, base_l + lightness_offset))
+                saturation = max(0.35, min(1.0, base_s + saturation_offset))
+                
+            hierarchical_colors[(parent, sub)] = hls_to_hex(base_h, lightness, saturation)
+
+    cat_to_color = {parent: parent_base_colors[parent][3] for parent in unique_parents}
 
     # 4. Combine data for visualization
     nodes = []
     for i in range(len(vectors_3d)):
-        cat = file_metadata[i].get("categories", ["Uncategorized"])[0]
+        cats = file_metadata[i].get("categories", ["Uncategorized"])
+        parent = cats[0]
+        sub = cats[1] if len(cats) > 1 else "General"
         source_path = file_metadata[i].get("source_path")
         rel_path = file_metadata[i].get("rel_path")
         
@@ -174,8 +228,8 @@ def extract_visualization_data():
             "y": float(vectors_3d[i, 1]),
             "z": float(vectors_3d[i, 2]),
             "size": 8 + min(12, len(file_texts[i]) / 1000),
-            "color": cat_to_color[cat],
-            "category": cat,
+            "color": hierarchical_colors.get((parent, sub), parent_base_colors.get(parent, (0, 0, 0, "#cccccc"))[3]),
+            "category": parent,
             "mtime": mtime,
             "text": file_texts[i],
             "metadata": file_metadata[i]

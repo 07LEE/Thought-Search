@@ -473,20 +473,124 @@ main {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    max-height: calc(100% - 150px);
+    overflow-y: auto;
+    width: 250px;
 }
 
-.legend-item {
+/* Custom scrollbar for legend */
+.legend::-webkit-scrollbar {
+    width: 4px;
+}
+.legend::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 2px;
+}
+.legend::-webkit-scrollbar-thumb {
+    background: rgba(56, 189, 248, 0.2);
+    border-radius: 2px;
+}
+
+.legend-group {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    padding-bottom: 0.25rem;
+}
+
+.legend-group:last-child {
+    border-bottom: none;
+}
+
+.legend-header {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     font-size: 0.75rem;
     color: var(--text-secondary);
+    padding: 0.25rem 0;
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.2s ease;
+}
+
+.legend-header:hover {
+    color: var(--text-primary);
+}
+
+.legend-title {
+    flex: 1;
+}
+
+.legend-arrow {
+    font-size: 0.55rem;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    color: #64748b;
+}
+
+.legend-group.active .legend-arrow {
+    transform: rotate(180deg);
+}
+
+.legend-sub-list {
+    display: none;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding-left: 1.5rem;
+    margin: 0.4rem 0;
+}
+
+.legend-group.active .legend-sub-list {
+    display: flex;
+}
+
+.legend-sub-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.7rem;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 2px 0;
+}
+
+.legend-sub-item:hover, .legend-sub-item.active {
+    color: var(--accent-color);
+    transform: translateX(3px);
+}
+
+.legend-sub-color {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
 }
 
 .legend-color {
     width: 12px;
     height: 12px;
     border-radius: 3px;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.legend-color:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+}
+
+.legend-reset-btn {
+    cursor: pointer;
+    color: var(--accent-color);
+    transition: color 0.2s ease, opacity 0.2s ease;
+    opacity: 0.7;
+    font-size: 0.65rem;
+    font-weight: 600;
+}
+
+.legend-reset-btn:hover {
+    opacity: 1;
+    color: #ef4444;
 }
 
 .related-section {
