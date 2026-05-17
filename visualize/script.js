@@ -297,7 +297,7 @@ async function init() {
                             const p = cs[0];
                             const s = cs[1] || "General";
                             const baseSize = n.size;
-                            return (p === cat && s === sub) ? baseSize * 1.3 : baseSize * 0.7;
+                            return (p === cat && s === sub) ? baseSize : 1.5;
                         });
 
                         Plotly.restyle('plot', {
