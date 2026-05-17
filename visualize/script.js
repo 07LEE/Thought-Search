@@ -7,6 +7,141 @@ let lastHighlightedIndex = null;
 let isAutoOrbit = true;
 let orbitAngle = 0;
 let activeSubHighlight = null;
+let timelineStart = null;
+let timelineEnd = null;
+let minTimelineTime = null;
+let maxTimelineTime = null;
+let activeSearchIndices = null;
+
+function getNodeTime(node) {
+    if (node.metadata && node.metadata.date) {
+        const d = new Date(node.metadata.date);
+        if (!isNaN(d.getTime())) return d.getTime();
+    }
+    if (node.mtime) {
+        return node.mtime * 1000;
+    }
+    return new Date().getTime();
+}
+
+function formatDate(timestamp) {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return "YYYY-MM-DD";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function applyGraphVisualState() {
+    const startVal = timelineStart !== null ? timelineStart : minTimelineTime;
+    const endVal = timelineEnd !== null ? timelineEnd : maxTimelineTime;
+    
+    let baseOpacities = [];
+    let baseSizes = [];
+    
+    if (lastHighlightedIndex !== null) {
+        const connectedIndices = new Set();
+        globalEdges.forEach(edge => {
+            const [sIdx, tIdx, score] = edge;
+            if (score >= currentThreshold && (sIdx === lastHighlightedIndex || tIdx === lastHighlightedIndex)) {
+                const neighborIdx = (sIdx === lastHighlightedIndex ? tIdx : sIdx);
+                connectedIndices.add(neighborIdx);
+            }
+        });
+        
+        baseOpacities = globalNodes.map((n, i) => (i === lastHighlightedIndex || connectedIndices.has(i)) ? 1.0 : 0.05);
+        baseSizes = globalNodes.map((n, i) => (i === lastHighlightedIndex || connectedIndices.has(i)) ? n.size * 1.5 : 2);
+    } else if (activeSubHighlight !== null) {
+        const [cat, sub] = activeSubHighlight.split(' > ');
+        baseOpacities = globalNodes.map(n => {
+            const cs = n.metadata.categories || ["Uncategorized"];
+            return (cs[0] === cat && (cs[1] || "General") === sub) ? 1.0 : 0.08;
+        });
+        baseSizes = globalNodes.map(n => {
+            const cs = n.metadata.categories || ["Uncategorized"];
+            const isMatch = cs[0] === cat && (cs[1] || "General") === sub;
+            return isMatch ? n.size : 1.5;
+        });
+    } else if (activeSearchIndices !== null) {
+        baseOpacities = globalNodes.map((n, i) => activeSearchIndices.has(i) ? 1.0 : 0.05);
+        baseSizes = globalNodes.map((n, i) => activeSearchIndices.has(i) ? n.size * 1.5 : 2);
+    } else {
+        baseOpacities = globalNodes.map(() => 0.9);
+        baseSizes = globalNodes.map(n => n.size);
+    }
+    
+    const finalOpacities = globalNodes.map((n, i) => {
+        const time = getNodeTime(n);
+        if (time >= startVal && time <= endVal) {
+            return baseOpacities[i];
+        } else {
+            return 0.005;
+        }
+    });
+    
+    const finalSizes = globalNodes.map((n, i) => {
+        const time = getNodeTime(n);
+        if (time >= startVal && time <= endVal) {
+            return baseSizes[i];
+        } else {
+            return 0.5;
+        }
+    });
+    
+    // Compute edges based on threshold and timeline
+    const edgeX = [], edgeY = [], edgeZ = [];
+    globalEdges.forEach(edge => {
+        const [sourceIdx, targetIdx, score] = edge;
+        if (score >= currentThreshold) {
+            const s = globalNodes[sourceIdx], t = globalNodes[targetIdx];
+            const sTime = getNodeTime(s);
+            const tTime = getNodeTime(t);
+            if (sTime >= startVal && sTime <= endVal && tTime >= startVal && tTime <= endVal) {
+                edgeX.push(s.x, t.x, null); edgeY.push(s.y, t.y, null); edgeZ.push(s.z, t.z, null);
+            }
+        }
+    });
+    
+    let finalEdgeX = edgeX;
+    let finalEdgeY = edgeY;
+    let finalEdgeZ = edgeZ;
+    let edgeColor = 'rgba(56, 189, 248, 0.15)';
+    let edgeWidth = 1;
+    
+    if (lastHighlightedIndex !== null) {
+        const hX = [], hY = [], hZ = [];
+        globalEdges.forEach(edge => {
+            const [sIdx, tIdx, score] = edge;
+            if (score >= currentThreshold && (sIdx === lastHighlightedIndex || tIdx === lastHighlightedIndex)) {
+                const s = globalNodes[sIdx], t = globalNodes[tIdx];
+                const sTime = getNodeTime(s);
+                const tTime = getNodeTime(t);
+                if (sTime >= startVal && sTime <= endVal && tTime >= startVal && tTime <= endVal) {
+                    hX.push(s.x, t.x, null); hY.push(s.y, t.y, null); hZ.push(s.z, t.z, null);
+                }
+            }
+        });
+        finalEdgeX = hX.length ? hX : [null];
+        finalEdgeY = hY.length ? hY : [null];
+        finalEdgeZ = hZ.length ? hZ : [null];
+        edgeColor = 'rgba(56, 189, 248, 0.8)';
+        edgeWidth = 3;
+    }
+    
+    Plotly.restyle('plot', {
+        'marker.opacity': [finalOpacities],
+        'marker.size': [finalSizes]
+    }, [1]);
+    
+    Plotly.restyle('plot', {
+        'x': [finalEdgeX],
+        'y': [finalEdgeY],
+        'z': [finalEdgeZ],
+        'line.color': edgeColor,
+        'line.width': edgeWidth
+    }, [0]);
+}
 
 // --- Color Space Utility Helpers ---
 function hexToHls(hex) {
@@ -274,36 +409,13 @@ async function init() {
                         // 이미 선택된 항목 재클릭 시 필터링 전면 해제
                         activeSubHighlight = null;
                         subItem.classList.remove('active');
-                        
-                        Plotly.restyle('plot', {
-                            'marker.opacity': [globalNodes.map(() => 0.9)],
-                            'marker.size': [globalNodes.map(n => n.size)]
-                        }, [1]);
+                        applyGraphVisualState();
                     } else {
                         // 새로운 소분류 공간 하이라이트 가동
                         activeSubHighlight = subKey;
                         allSubItems.forEach(item => item.classList.remove('active'));
                         subItem.classList.add('active');
-
-                        const opacities = globalNodes.map(n => {
-                            const cs = n.metadata.categories || ["Uncategorized"];
-                            const p = cs[0];
-                            const s = cs[1] || "General";
-                            return (p === cat && s === sub) ? 1.0 : 0.08;
-                        });
-
-                        const sizes = globalNodes.map(n => {
-                            const cs = n.metadata.categories || ["Uncategorized"];
-                            const p = cs[0];
-                            const s = cs[1] || "General";
-                            const baseSize = n.size;
-                            return (p === cat && s === sub) ? baseSize : 1.5;
-                        });
-
-                        Plotly.restyle('plot', {
-                            'marker.opacity': [opacities],
-                            'marker.size': [sizes]
-                        }, [1]);
+                        applyGraphVisualState();
                     }
                 });
 
@@ -339,19 +451,76 @@ async function init() {
         };
 
 
-        const getFilteredEdges = (threshold) => {
+        const getFilteredEdges = (threshold, start, end) => {
             const edgeX = [], edgeY = [], edgeZ = [];
+            const sVal = start !== undefined ? start : minTimelineTime;
+            const eVal = end !== undefined ? end : maxTimelineTime;
             globalEdges.forEach(edge => {
                 const [sourceIdx, targetIdx, score] = edge;
                 if (score >= threshold) {
                     const s = globalNodes[sourceIdx], t = globalNodes[targetIdx];
-                    edgeX.push(s.x, t.x, null); edgeY.push(s.y, t.y, null); edgeZ.push(s.z, t.z, null);
+                    const sTime = getNodeTime(s);
+                    const tTime = getNodeTime(t);
+                    if (sTime >= sVal && sTime <= eVal && tTime >= sVal && tTime <= eVal) {
+                        edgeX.push(s.x, t.x, null); edgeY.push(s.y, t.y, null); edgeZ.push(s.z, t.z, null);
+                    }
                 }
             });
             return { x: edgeX, y: edgeY, z: edgeZ };
         };
 
-        const initialEdges = getFilteredEdges(currentThreshold);
+        // --- Timeline Initial Range Configuration ---
+        const nodeTimes = globalNodes.map(getNodeTime);
+        minTimelineTime = Math.min(...nodeTimes);
+        maxTimelineTime = Math.max(...nodeTimes);
+        
+        if (minTimelineTime === maxTimelineTime) {
+            minTimelineTime -= 24 * 60 * 60 * 1000;
+            maxTimelineTime += 24 * 60 * 60 * 1000;
+        }
+        
+        timelineStart = minTimelineTime;
+        timelineEnd = maxTimelineTime;
+        
+        const startSlider = document.getElementById('timeline-start-slider');
+        const endSlider = document.getElementById('timeline-end-slider');
+        
+        startSlider.min = minTimelineTime;
+        startSlider.max = maxTimelineTime;
+        startSlider.value = minTimelineTime;
+        startSlider.step = 24 * 60 * 60 * 1000;
+        
+        endSlider.min = minTimelineTime;
+        endSlider.max = maxTimelineTime;
+        endSlider.value = maxTimelineTime;
+        endSlider.step = 24 * 60 * 60 * 1000;
+        
+        document.getElementById('timeline-start-val').textContent = formatDate(minTimelineTime);
+        document.getElementById('timeline-end-val').textContent = formatDate(maxTimelineTime);
+        
+        startSlider.addEventListener('input', function() {
+            let val = parseFloat(this.value);
+            if (val > parseFloat(endSlider.value)) {
+                this.value = endSlider.value;
+                val = parseFloat(endSlider.value);
+            }
+            timelineStart = val;
+            document.getElementById('timeline-start-val').textContent = formatDate(val);
+            applyGraphVisualState();
+        });
+        
+        endSlider.addEventListener('input', function() {
+            let val = parseFloat(this.value);
+            if (val < parseFloat(startSlider.value)) {
+                this.value = startSlider.value;
+                val = parseFloat(startSlider.value);
+            }
+            timelineEnd = val;
+            document.getElementById('timeline-end-val').textContent = formatDate(val);
+            applyGraphVisualState();
+        });
+
+        const initialEdges = getFilteredEdges(currentThreshold, minTimelineTime, maxTimelineTime);
         originalEdgeX = initialEdges.x;
         originalEdgeY = initialEdges.y;
         originalEdgeZ = initialEdges.z;
@@ -453,10 +622,8 @@ async function init() {
 
             // Update graph to highlight search results
             if (resultIndices.size > 0) {
-                Plotly.restyle('plot', {
-                    'marker.opacity': [globalNodes.map((n, i) => resultIndices.has(i) ? 1.0 : 0.05)],
-                    'marker.size': [globalNodes.map((n, i) => resultIndices.has(i) ? n.size * 1.5 : 2)]
-                }, [1]);
+                activeSearchIndices = resultIndices;
+                applyGraphVisualState();
             }
         }
 
@@ -473,23 +640,7 @@ async function init() {
         thresholdSlider.addEventListener('input', function() {
             currentThreshold = parseFloat(this.value);
             thresholdVal.textContent = currentThreshold.toFixed(2);
-            
-            if (lastHighlightedIndex !== null) {
-                // If in highlight mode, re-trigger highlight with new threshold
-                highlightNode(lastHighlightedIndex);
-            } else {
-                // Normal mode: update all edges
-                const newEdges = getFilteredEdges(currentThreshold);
-                originalEdgeX = newEdges.x;
-                originalEdgeY = newEdges.y;
-                originalEdgeZ = newEdges.z;
-                
-                Plotly.restyle('plot', {
-                    'x': [originalEdgeX],
-                    'y': [originalEdgeY],
-                    'z': [originalEdgeZ]
-                }, [0]);
-            }
+            applyGraphVisualState();
         });
 
         const plotDiv = document.getElementById('plot');
@@ -714,15 +865,7 @@ async function highlightNode(index) {
             });
         }
 
-        await Plotly.restyle('plot', {
-            'marker.opacity': [globalNodes.map((n, i) => (i === index || connectedIndices.has(i)) ? 1.0 : 0.05)],
-            'marker.size': [globalNodes.map((n, i) => (i === index || connectedIndices.has(i)) ? n.size * 1.5 : 2)]
-        }, [1]);
-
-        await Plotly.restyle('plot', {
-            'x': [hX.length ? hX : [null]], 'y': [hY.length ? hY : [null]], 'z': [hZ.length ? hZ : [null]],
-            'line.color': 'rgba(56, 189, 248, 0.8)', 'line.width': 3
-        }, [0]);
+        applyGraphVisualState();
 
         document.getElementById('info-panel').classList.add('active');
     } catch (e) { console.error('Highlight error:', e); }
@@ -738,20 +881,12 @@ async function resetView() {
         const allSubItems = document.querySelectorAll('.legend-sub-item');
         allSubItems.forEach(item => item.classList.remove('active'));
 
-        await Plotly.restyle('plot', {
-            'marker.opacity': [globalNodes.map(() => 0.9)],
-            'marker.size': [globalNodes.map(n => n.size)],
-            'marker.color': [globalNodes.map(n => n.color)]
-        }, [1]);
-
-        await Plotly.restyle('plot', {
-            'x': [originalEdgeX], 'y': [originalEdgeY], 'z': [originalEdgeZ],
-            'line.color': 'rgba(56, 189, 248, 0.15)', 'line.width': 1
-        }, [0]);
+        activeSearchIndices = null;
+        lastHighlightedIndex = null;
+        applyGraphVisualState();
 
         document.getElementById('info-panel').classList.remove('active');
         document.getElementById('search-input').value = '';
-        lastHighlightedIndex = null;
     } catch (e) { console.error('Reset error:', e); }
     finally { setTimeout(() => { isUpdating = false; }, 100); }
 }
