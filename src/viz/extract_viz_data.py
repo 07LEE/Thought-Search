@@ -121,19 +121,25 @@ def extract_visualization_data():
             # Subtle metadata nudge
             final_score = raw_score
             if source_cats and target_cats:
-                if source_cats[0] != target_cats[0]:
-                    final_score -= 0.05 # Strengthened penalty for domain mismatch
-                else:
-                    shared_depth = 0
-                    for c1, c2 in zip(source_cats, target_cats):
-                        if c1 == c2: shared_depth += 1
-                        else: break
-                    final_score += 0.02 * shared_depth # Increased bonus for same domain/folder
+                src_domain_cats = [c for c in source_cats if c not in ('Notes', 'Journal')]
+                tgt_domain_cats = [c for c in target_cats if c not in ('Notes', 'Journal')]
+                
+                if src_domain_cats and tgt_domain_cats:
+                    if src_domain_cats[0] != tgt_domain_cats[0]:
+                        final_score -= 0.15
+                    else:
+                        shared_depth = 0
+                        for c1, c2 in zip(src_domain_cats, tgt_domain_cats):
+                            if c1 == c2: shared_depth += 1
+                            else: break
+                        final_score += 0.05 * shared_depth
             
             # Tag Bonus
             shared_tags = source_tags.intersection(target_tags) - BROAD_TAGS
             if shared_tags:
-                final_score += min(0.05, 0.02 * len(shared_tags))
+                final_score += min(0.15, 0.04 * len(shared_tags))
+                if 'blender' in shared_tags:
+                    final_score += 0.10
             
             # Connection Logic: Mandatory Reciprocal Verification
             # Only connect if BOTH documents are in each other's top-k
