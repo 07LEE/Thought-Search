@@ -6,6 +6,226 @@ let currentThreshold = 0.80;
 let lastHighlightedIndex = null;
 let isAutoOrbit = true;
 let orbitAngle = 0;
+let activeSubHighlight = null;
+let timelineStart = null;
+let timelineEnd = null;
+let minTimelineTime = null;
+let maxTimelineTime = null;
+let activeSearchIndices = null;
+
+function getNodeTime(node) {
+    if (node.metadata && node.metadata.date) {
+        const d = new Date(node.metadata.date);
+        if (!isNaN(d.getTime())) return d.getTime();
+    }
+    if (node.mtime) {
+        return node.mtime * 1000;
+    }
+    return new Date().getTime();
+}
+
+function formatDate(timestamp) {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return "YYYY-MM-DD";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function applyGraphVisualState() {
+    const startVal = timelineStart !== null ? timelineStart : minTimelineTime;
+    const endVal = timelineEnd !== null ? timelineEnd : maxTimelineTime;
+    
+    let baseOpacities = [];
+    let baseSizes = [];
+    
+    if (lastHighlightedIndex !== null) {
+        const connectedIndices = new Set();
+        globalEdges.forEach(edge => {
+            const [sIdx, tIdx, score] = edge;
+            if (score >= currentThreshold && (sIdx === lastHighlightedIndex || tIdx === lastHighlightedIndex)) {
+                const neighborIdx = (sIdx === lastHighlightedIndex ? tIdx : sIdx);
+                connectedIndices.add(neighborIdx);
+            }
+        });
+        
+        baseOpacities = globalNodes.map((n, i) => (i === lastHighlightedIndex || connectedIndices.has(i)) ? 1.0 : 0.05);
+        baseSizes = globalNodes.map((n, i) => (i === lastHighlightedIndex || connectedIndices.has(i)) ? n.size * 1.5 : 2);
+    } else if (activeSubHighlight !== null) {
+        const [cat, sub] = activeSubHighlight.split(' > ');
+        baseOpacities = globalNodes.map(n => {
+            const cs = n.metadata.categories || ["Uncategorized"];
+            return (cs[0] === cat && (cs[1] || "General") === sub) ? 1.0 : 0.08;
+        });
+        baseSizes = globalNodes.map(n => {
+            const cs = n.metadata.categories || ["Uncategorized"];
+            const isMatch = cs[0] === cat && (cs[1] || "General") === sub;
+            return isMatch ? n.size : 1.5;
+        });
+    } else if (activeSearchIndices !== null) {
+        baseOpacities = globalNodes.map((n, i) => activeSearchIndices.has(i) ? 1.0 : 0.05);
+        baseSizes = globalNodes.map((n, i) => activeSearchIndices.has(i) ? n.size * 1.5 : 2);
+    } else {
+        baseOpacities = globalNodes.map(() => 0.9);
+        baseSizes = globalNodes.map(n => n.size);
+    }
+    
+    const finalOpacities = globalNodes.map((n, i) => {
+        const time = getNodeTime(n);
+        if (time >= startVal && time <= endVal) {
+            return baseOpacities[i];
+        } else {
+            return 0.005;
+        }
+    });
+    
+    const finalSizes = globalNodes.map((n, i) => {
+        const time = getNodeTime(n);
+        if (time >= startVal && time <= endVal) {
+            return baseSizes[i];
+        } else {
+            return 0.5;
+        }
+    });
+    
+    // Compute edges based on threshold and timeline
+    const edgeX = [], edgeY = [], edgeZ = [];
+    globalEdges.forEach(edge => {
+        const [sourceIdx, targetIdx, score] = edge;
+        if (score >= currentThreshold) {
+            const s = globalNodes[sourceIdx], t = globalNodes[targetIdx];
+            const sTime = getNodeTime(s);
+            const tTime = getNodeTime(t);
+            if (sTime >= startVal && sTime <= endVal && tTime >= startVal && tTime <= endVal) {
+                edgeX.push(s.x, t.x, null); edgeY.push(s.y, t.y, null); edgeZ.push(s.z, t.z, null);
+            }
+        }
+    });
+    
+    let finalEdgeX = edgeX;
+    let finalEdgeY = edgeY;
+    let finalEdgeZ = edgeZ;
+    let edgeColor = 'rgba(56, 189, 248, 0.15)';
+    let edgeWidth = 1;
+    
+    if (lastHighlightedIndex !== null) {
+        const hX = [], hY = [], hZ = [];
+        globalEdges.forEach(edge => {
+            const [sIdx, tIdx, score] = edge;
+            if (score >= currentThreshold && (sIdx === lastHighlightedIndex || tIdx === lastHighlightedIndex)) {
+                const s = globalNodes[sIdx], t = globalNodes[tIdx];
+                const sTime = getNodeTime(s);
+                const tTime = getNodeTime(t);
+                if (sTime >= startVal && sTime <= endVal && tTime >= startVal && tTime <= endVal) {
+                    hX.push(s.x, t.x, null); hY.push(s.y, t.y, null); hZ.push(s.z, t.z, null);
+                }
+            }
+        });
+        finalEdgeX = hX.length ? hX : [null];
+        finalEdgeY = hY.length ? hY : [null];
+        finalEdgeZ = hZ.length ? hZ : [null];
+        edgeColor = 'rgba(56, 189, 248, 0.8)';
+        edgeWidth = 3;
+    }
+    
+    Plotly.restyle('plot', {
+        'marker.opacity': [finalOpacities],
+        'marker.size': [finalSizes]
+    }, [1]);
+    
+    Plotly.restyle('plot', {
+        'x': [finalEdgeX],
+        'y': [finalEdgeY],
+        'z': [finalEdgeZ],
+        'line.color': edgeColor,
+        'line.width': edgeWidth
+    }, [0]);
+}
+
+// --- Color Space Utility Helpers ---
+function hexToHls(hex) {
+    hex = hex.replace(/^#/, '');
+    let r = parseInt(hex.substring(0, 2), 16) / 255;
+    let g = parseInt(hex.substring(2, 4), 16) / 255;
+    let b = parseInt(hex.substring(4, 6), 16) / 255;
+    
+    let max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, l, s;
+    l = (max + min) / 2;
+    
+    if (max === min) {
+        h = s = 0;
+    } else {
+        let d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+    return { h, l, s };
+}
+
+function hlsToHex(h, l, s) {
+    let r, g, b;
+    if (s === 0) {
+        r = g = b = l;
+    } else {
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1/6) return p + (q - p) * 6 * t;
+            if (t < 1/2) return q;
+            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+            return p;
+        };
+        let q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        let p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1/3);
+    }
+    const toHex = x => {
+        const hex = Math.round(x * 255).toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+    };
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function updateNodeColorsForCategory(targetCat, newHex) {
+    const targetNodes = globalNodes.filter(n => n.category === targetCat);
+    const subs = Array.from(new Set(targetNodes.map(n => {
+        const cats = n.metadata.categories || ["Uncategorized"];
+        return cats[1] || "General";
+    }))).sort();
+    
+    const { h, l, s } = hexToHls(newHex);
+    const numSubs = subs.length;
+    
+    const subToColor = {};
+    subs.forEach((sub, subIdx) => {
+        if (numSubs <= 1) {
+            subToColor[sub] = newHex;
+        } else {
+            const lightnessOffset = -0.22 + (subIdx * 0.44 / (numSubs - 1));
+            const saturationOffset = -0.15 + (subIdx * 0.25 / (numSubs - 1));
+            const modulatedL = Math.max(0.30, Math.min(0.90, l + lightnessOffset));
+            const modulatedS = Math.max(0.35, Math.min(1.0, s + saturationOffset));
+            subToColor[sub] = hlsToHex(h, modulatedL, modulatedS);
+        }
+    });
+    
+    globalNodes.forEach(node => {
+        if (node.category === targetCat) {
+            const cats = node.metadata.categories || ["Uncategorized"];
+            const sub = cats[1] || "General";
+            node.color = subToColor[sub] || newHex;
+        }
+    });
+}
 
 async function init() {
     try {
@@ -13,7 +233,6 @@ async function init() {
         marked.use({
             hooks: {
                 postprocess(html) {
-                    // 모든 <table> 태그를 .table-wrapper div로 감쌉니다.
                     return html.replace(/<table>/g, '<div class="table-wrapper"><table>')
                                .replace(/<\/table>/g, '</table></div>');
                 }
@@ -33,14 +252,186 @@ async function init() {
         globalEdges = data.edges;
         const categories = data.categories;
 
-        const legendContainer = document.getElementById('legend');
-        legendContainer.innerHTML = '<div style="font-size: 0.7rem; color: #64748b; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">Categories</div>';
+        // 로컬 스토리지 결합 및 노드 초기 색상 보정
+        const savedColorsRaw = localStorage.getItem('thought_search_custom_colors');
+        const customColors = savedColorsRaw ? JSON.parse(savedColorsRaw) : {};
+        
+        for (const [cat, customHex] of Object.entries(customColors)) {
+            if (categories[cat]) {
+                categories[cat] = customHex;
+                updateNodeColorsForCategory(cat, customHex);
+            }
+        }
 
+        const legendContainer = document.getElementById('legend');
+        legendContainer.innerHTML = '';
+        
+        const legendHeaderWrapper = document.createElement('div');
+        legendHeaderWrapper.style.display = 'flex';
+        legendHeaderWrapper.style.justifyContent = 'space-between';
+        legendHeaderWrapper.style.alignItems = 'center';
+        legendHeaderWrapper.style.marginBottom = '8px';
+        
+        const legendTitleEl = document.createElement('span');
+        legendTitleEl.style.fontSize = '0.7rem';
+        legendTitleEl.style.color = '#64748b';
+        legendTitleEl.style.textTransform = 'uppercase';
+        legendTitleEl.style.letterSpacing = '0.05em';
+        legendTitleEl.textContent = 'Categories';
+        
+        const resetColorsBtn = document.createElement('span');
+        resetColorsBtn.className = 'legend-reset-btn';
+        resetColorsBtn.textContent = 'Reset';
+        resetColorsBtn.title = '색상 테마 초기화';
+        
+        resetColorsBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            localStorage.removeItem('thought_search_custom_colors');
+            location.reload();
+        });
+        
+        legendHeaderWrapper.appendChild(legendTitleEl);
+        legendHeaderWrapper.appendChild(resetColorsBtn);
+        legendContainer.appendChild(legendHeaderWrapper);
+
+        // 1. 대분류별 소분류 그룹 정리
+        const parentToSubs = {};
+        globalNodes.forEach(n => {
+            const cats = n.metadata.categories || ["Uncategorized"];
+            const parent = cats[0];
+            const sub = cats[1] || "General";
+            if (!parentToSubs[parent]) {
+                parentToSubs[parent] = new Set();
+            }
+            parentToSubs[parent].add(sub);
+        });
+
+        // 2. 아코디언 범례 렌더링
         for (const [cat, color] of Object.entries(categories)) {
-            const item = document.createElement('div');
-            item.className = 'legend-item';
-            item.innerHTML = `<div class="legend-color" style="background: ${color}"></div><span>${cat}</span>`;
-            legendContainer.appendChild(item);
+            const group = document.createElement('div');
+            group.className = 'legend-group';
+
+            const header = document.createElement('div');
+            header.className = 'legend-header';
+
+            const colorBox = document.createElement('div');
+            colorBox.className = 'legend-color';
+            colorBox.style.background = color;
+            colorBox.title = '대분류 색상 변경';
+            
+            // 색상 피커 기능 연동 및 이벤트 전파 차단
+            colorBox.addEventListener('click', function(e) {
+                e.stopPropagation();
+                
+                const picker = document.createElement('input');
+                picker.type = 'color';
+                picker.value = categories[cat];
+                
+                picker.addEventListener('input', function() {
+                    const newColor = picker.value;
+                    categories[cat] = newColor;
+                    colorBox.style.background = newColor;
+                    
+                    customColors[cat] = newColor;
+                    localStorage.setItem('thought_search_custom_colors', JSON.stringify(customColors));
+                    
+                    updateNodeColorsForCategory(cat, newColor);
+                    
+                    Plotly.restyle('plot', {
+                        'marker.color': [globalNodes.map(n => n.color)]
+                    }, [1]);
+
+                    // 하위 소분류 미니 색상 칩들도 즉시 리페인팅
+                    const subList = group.querySelector('.legend-sub-list');
+                    if (subList) {
+                        const subItems = subList.querySelectorAll('.legend-sub-item');
+                        subItems.forEach(item => {
+                            const subName = item.querySelector('span').textContent;
+                            const subColorBox = item.querySelector('.legend-sub-color');
+                            if (subColorBox) {
+                                subColorBox.style.background = getSubColor(cat, subName);
+                            }
+                        });
+                    }
+                });
+                
+                picker.click();
+            });
+
+            // 소분류 그라데이션 색상 동적 획득 헬퍼
+            const getSubColor = (parent, sub) => {
+                const foundNode = globalNodes.find(n => {
+                    const cs = n.metadata.categories || ["Uncategorized"];
+                    return cs[0] === parent && (cs[1] || "General") === sub;
+                });
+                return foundNode ? foundNode.color : categories[parent];
+            };
+
+            const label = document.createElement('span');
+            label.className = 'legend-title';
+            label.textContent = cat;
+
+            const arrow = document.createElement('span');
+            arrow.className = 'legend-arrow';
+            arrow.textContent = '▼';
+
+            header.appendChild(colorBox);
+            header.appendChild(label);
+            header.appendChild(arrow);
+
+            // 하위 소분류 목록 리스트
+            const subList = document.createElement('div');
+            subList.className = 'legend-sub-list';
+
+            const subsArray = Array.from(parentToSubs[cat] || []).sort();
+            subsArray.forEach(sub => {
+                const subItem = document.createElement('div');
+                subItem.className = 'legend-sub-item';
+
+                const subColorBox = document.createElement('div');
+                subColorBox.className = 'legend-sub-color';
+                subColorBox.style.background = getSubColor(cat, sub);
+
+                const subLabel = document.createElement('span');
+                subLabel.textContent = sub;
+
+                subItem.appendChild(subColorBox);
+                subItem.appendChild(subLabel);
+
+                // 소분류 지식 노드 실시간 하이라이팅 필터 장착
+                subItem.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    
+                    const subKey = `${cat} > ${sub}`;
+                    const allSubItems = legendContainer.querySelectorAll('.legend-sub-item');
+                    
+                    if (activeSubHighlight === subKey) {
+                        // 이미 선택된 항목 재클릭 시 필터링 전면 해제
+                        activeSubHighlight = null;
+                        subItem.classList.remove('active');
+                        applyGraphVisualState();
+                    } else {
+                        // 새로운 소분류 공간 하이라이트 가동
+                        activeSubHighlight = subKey;
+                        allSubItems.forEach(item => item.classList.remove('active'));
+                        subItem.classList.add('active');
+                        applyGraphVisualState();
+                    }
+                });
+
+                subList.appendChild(subItem);
+            });
+
+            // 헤더 영역 클릭 시 아코디언 토글 적용
+            header.addEventListener('click', function() {
+                group.classList.toggle('active');
+            });
+
+            group.appendChild(header);
+            if (subsArray.length > 0) {
+                group.appendChild(subList);
+            }
+            legendContainer.appendChild(group);
         }
 
         const nodeTrace = {
@@ -60,19 +451,76 @@ async function init() {
         };
 
 
-        const getFilteredEdges = (threshold) => {
+        const getFilteredEdges = (threshold, start, end) => {
             const edgeX = [], edgeY = [], edgeZ = [];
+            const sVal = start !== undefined ? start : minTimelineTime;
+            const eVal = end !== undefined ? end : maxTimelineTime;
             globalEdges.forEach(edge => {
                 const [sourceIdx, targetIdx, score] = edge;
                 if (score >= threshold) {
                     const s = globalNodes[sourceIdx], t = globalNodes[targetIdx];
-                    edgeX.push(s.x, t.x, null); edgeY.push(s.y, t.y, null); edgeZ.push(s.z, t.z, null);
+                    const sTime = getNodeTime(s);
+                    const tTime = getNodeTime(t);
+                    if (sTime >= sVal && sTime <= eVal && tTime >= sVal && tTime <= eVal) {
+                        edgeX.push(s.x, t.x, null); edgeY.push(s.y, t.y, null); edgeZ.push(s.z, t.z, null);
+                    }
                 }
             });
             return { x: edgeX, y: edgeY, z: edgeZ };
         };
 
-        const initialEdges = getFilteredEdges(currentThreshold);
+        // --- Timeline Initial Range Configuration ---
+        const nodeTimes = globalNodes.map(getNodeTime);
+        minTimelineTime = Math.min(...nodeTimes);
+        maxTimelineTime = Math.max(...nodeTimes);
+        
+        if (minTimelineTime === maxTimelineTime) {
+            minTimelineTime -= 24 * 60 * 60 * 1000;
+            maxTimelineTime += 24 * 60 * 60 * 1000;
+        }
+        
+        timelineStart = minTimelineTime;
+        timelineEnd = maxTimelineTime;
+        
+        const startSlider = document.getElementById('timeline-start-slider');
+        const endSlider = document.getElementById('timeline-end-slider');
+        
+        startSlider.min = minTimelineTime;
+        startSlider.max = maxTimelineTime;
+        startSlider.value = minTimelineTime;
+        startSlider.step = 24 * 60 * 60 * 1000;
+        
+        endSlider.min = minTimelineTime;
+        endSlider.max = maxTimelineTime;
+        endSlider.value = maxTimelineTime;
+        endSlider.step = 24 * 60 * 60 * 1000;
+        
+        document.getElementById('timeline-start-val').textContent = formatDate(minTimelineTime);
+        document.getElementById('timeline-end-val').textContent = formatDate(maxTimelineTime);
+        
+        startSlider.addEventListener('input', function() {
+            let val = parseFloat(this.value);
+            if (val > parseFloat(endSlider.value)) {
+                this.value = endSlider.value;
+                val = parseFloat(endSlider.value);
+            }
+            timelineStart = val;
+            document.getElementById('timeline-start-val').textContent = formatDate(val);
+            applyGraphVisualState();
+        });
+        
+        endSlider.addEventListener('input', function() {
+            let val = parseFloat(this.value);
+            if (val < parseFloat(startSlider.value)) {
+                this.value = startSlider.value;
+                val = parseFloat(startSlider.value);
+            }
+            timelineEnd = val;
+            document.getElementById('timeline-end-val').textContent = formatDate(val);
+            applyGraphVisualState();
+        });
+
+        const initialEdges = getFilteredEdges(currentThreshold, minTimelineTime, maxTimelineTime);
         originalEdgeX = initialEdges.x;
         originalEdgeY = initialEdges.y;
         originalEdgeZ = initialEdges.z;
@@ -134,6 +582,15 @@ async function init() {
             searchResults.innerHTML = '';
             searchResults.classList.add('active');
             
+            const resultPaths = new Set(results.map(res => res.metadata.rel_path));
+            const resultIndices = new Set();
+            
+            globalNodes.forEach((node, i) => {
+                if (resultPaths.has(node.metadata.rel_path)) {
+                    resultIndices.add(i);
+                }
+            });
+
             results.forEach(res => {
                 const item = document.createElement('div');
                 item.className = 'search-result-item';
@@ -162,6 +619,12 @@ async function init() {
                 
                 searchResults.appendChild(item);
             });
+
+            // Update graph to highlight search results
+            if (resultIndices.size > 0) {
+                activeSearchIndices = resultIndices;
+                applyGraphVisualState();
+            }
         }
 
         // Close search results when clicking outside
@@ -177,23 +640,7 @@ async function init() {
         thresholdSlider.addEventListener('input', function() {
             currentThreshold = parseFloat(this.value);
             thresholdVal.textContent = currentThreshold.toFixed(2);
-            
-            if (lastHighlightedIndex !== null) {
-                // If in highlight mode, re-trigger highlight with new threshold
-                highlightNode(lastHighlightedIndex);
-            } else {
-                // Normal mode: update all edges
-                const newEdges = getFilteredEdges(currentThreshold);
-                originalEdgeX = newEdges.x;
-                originalEdgeY = newEdges.y;
-                originalEdgeZ = newEdges.z;
-                
-                Plotly.restyle('plot', {
-                    'x': [originalEdgeX],
-                    'y': [originalEdgeY],
-                    'z': [originalEdgeZ]
-                }, [0]);
-            }
+            applyGraphVisualState();
         });
 
         const plotDiv = document.getElementById('plot');
@@ -418,15 +865,7 @@ async function highlightNode(index) {
             });
         }
 
-        await Plotly.restyle('plot', {
-            'marker.opacity': [globalNodes.map((n, i) => (i === index || connectedIndices.has(i)) ? 1.0 : 0.05)],
-            'marker.size': [globalNodes.map((n, i) => (i === index || connectedIndices.has(i)) ? n.size * 1.5 : 2)]
-        }, [1]);
-
-        await Plotly.restyle('plot', {
-            'x': [hX.length ? hX : [null]], 'y': [hY.length ? hY : [null]], 'z': [hZ.length ? hZ : [null]],
-            'line.color': 'rgba(56, 189, 248, 0.8)', 'line.width': 3
-        }, [0]);
+        applyGraphVisualState();
 
         document.getElementById('info-panel').classList.add('active');
     } catch (e) { console.error('Highlight error:', e); }
@@ -437,20 +876,17 @@ async function resetView() {
     if (isUpdating) return;
     isUpdating = true;
     try {
-        await Plotly.restyle('plot', {
-            'marker.opacity': [globalNodes.map(() => 0.9)],
-            'marker.size': [globalNodes.map(n => n.size)],
-            'marker.color': [globalNodes.map(n => n.color)]
-        }, [1]);
+        // 소분류 공간 하이라이트 필터링 정보 전면 롤백
+        activeSubHighlight = null;
+        const allSubItems = document.querySelectorAll('.legend-sub-item');
+        allSubItems.forEach(item => item.classList.remove('active'));
 
-        await Plotly.restyle('plot', {
-            'x': [originalEdgeX], 'y': [originalEdgeY], 'z': [originalEdgeZ],
-            'line.color': 'rgba(56, 189, 248, 0.15)', 'line.width': 1
-        }, [0]);
+        activeSearchIndices = null;
+        lastHighlightedIndex = null;
+        applyGraphVisualState();
 
         document.getElementById('info-panel').classList.remove('active');
         document.getElementById('search-input').value = '';
-        lastHighlightedIndex = null;
     } catch (e) { console.error('Reset error:', e); }
     finally { setTimeout(() => { isUpdating = false; }, 100); }
 }

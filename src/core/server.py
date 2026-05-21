@@ -8,6 +8,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 sys.path.append(os.path.join(BASE_DIR, "src"))
 
 from cli.indexer import index_markdown_files
+from tools.scan_keywords import scan_posts
 from viz.extract_viz_data import extract_visualization_data
 from core.config import DB_DEFAULT_PATH, POSTS_DIR
 from core.vector_db import SimpleVectorDB
@@ -56,7 +57,11 @@ def sync_db():
         print("LOGE: [Server] Running viz data extractor...")
         extract_visualization_data()
         
-        # 3. Reload Database to sync memory with disk
+        # 3. Run Keyword Scanner
+        print("LOGE: [Server] Running keyword scanner...")
+        scan_posts(POSTS_DIR, min_count=5)
+        
+        # 4. Reload Database to sync memory with disk
         print("LOGE: [Server] Reloading database...")
         db.load(DB_DEFAULT_PATH)
         

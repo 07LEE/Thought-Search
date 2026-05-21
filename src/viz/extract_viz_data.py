@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 import json
 import os
+import colorsys
 import numpy as np
-from sklearn.manifold import TSNE
+import umap
 
 # Path configuration
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -63,7 +64,8 @@ def extract_visualization_data():
         file_metadata.append(metadata[indices[0]])
         
         # 3. Combine text for the whole file
-        full_text = "\n\n".join([documents[i] for i in indices])
+        # Prioritize display_text from metadata (which contains code blocks)
+        full_text = "\n\n".join([metadata[i].get("display_text", documents[i]) for i in indices])
         file_texts.append(full_text)
         
     file_vectors = np.array(file_vectors)
@@ -73,30 +75,30 @@ def extract_visualization_data():
         print("Not enough documents for visualization.")
         return
 
-    # 1. Dimensionality Reduction using t-SNE (3D)
-    norms = np.linalg.norm(file_vectors, axis=1, keepdims=True)
-    file_vectors_norm = file_vectors / (norms + 1e-10)
+    # 1. Dimensionality Reduction using UMAP (3D)
+    # UMAP natively supports cosine metric and preserves global structure better than t-SNE
+    print(f"Running UMAP 3D (n_neighbors=30, metric='cosine')...")
     
-    perplexity = min(30, len(file_vectors) - 1)
-    print(f"Running t-SNE 3D (perplexity={perplexity})...")
-    
-    tsne = TSNE(
-        n_components=3, 
-        perplexity=perplexity, 
-        random_state=42, 
-        init='pca', 
-        learning_rate='auto'
+    reducer = umap.UMAP(
+        n_neighbors=30,
+        min_dist=0.3,
+        n_components=3,
+        metric='cosine',
+        random_state=42,
+        low_memory=False
     )
-    vectors_3d = tsne.fit_transform(file_vectors_norm)
+    vectors_3d = reducer.fit_transform(file_vectors)
 
     # 2. Calculate Connectivity (Document-level) with Reciprocal Verification
+    norms = np.linalg.norm(file_vectors, axis=1, keepdims=True)
+    file_vectors_norm = file_vectors / (norms + 1e-10)
     sim_matrix = np.dot(file_vectors_norm, file_vectors_norm.T)
     BROAD_TAGS = {"linux", "ubuntu", "optimization", "guide", "setup"} 
     
     # Pre-calculate RAW candidates for all nodes (Semantic-only)
     adj_list = []
     for i in range(len(sim_matrix)):
-        top_indices = np.argsort(sim_matrix[i])[::-1][1:16] # Expanded to top 15
+        top_indices = np.argsort(sim_matrix[i])[::-1][1:11] # Reduced to top 10
         candidates = {int(j): float(sim_matrix[i, j]) for j in top_indices}
         adj_list.append(candidates)
 
@@ -119,39 +121,98 @@ def extract_visualization_data():
             # Subtle metadata nudge
             final_score = raw_score
             if source_cats and target_cats:
-                if source_cats[0] != target_cats[0]:
-                    final_score -= 0.02 # Subtle penalty for domain mismatch
-                else:
-                    shared_depth = 0
-                    for c1, c2 in zip(source_cats, target_cats):
-                        if c1 == c2: shared_depth += 1
-                        else: break
-                    final_score += 0.02 * shared_depth # Increased bonus for same domain/folder
+                src_domain_cats = [c for c in source_cats if c not in ('Notes', 'Journal')]
+                tgt_domain_cats = [c for c in target_cats if c not in ('Notes', 'Journal')]
+                
+                if src_domain_cats and tgt_domain_cats:
+                    if src_domain_cats[0] != tgt_domain_cats[0]:
+                        final_score -= 0.15
+                    else:
+                        shared_depth = 0
+                        for c1, c2 in zip(src_domain_cats, tgt_domain_cats):
+                            if c1 == c2: shared_depth += 1
+                            else: break
+                        final_score += 0.05 * shared_depth
             
             # Tag Bonus
             shared_tags = source_tags.intersection(target_tags) - BROAD_TAGS
             if shared_tags:
-                final_score += min(0.05, 0.02 * len(shared_tags))
+                final_score += min(0.15, 0.04 * len(shared_tags))
+                if 'blender' in shared_tags:
+                    final_score += 0.10
             
-            # Connection Logic:
-            # Save edges with score for frontend filtering
-            if final_score > 0.50: # Lower threshold for data inclusion
+            # Connection Logic: Mandatory Reciprocal Verification
+            # Only connect if BOTH documents are in each other's top-k
+            if is_reciprocal and final_score >= RECIPROCAL_THRESHOLD:
                 edges.append([i, j, round(float(final_score), 4)])
 
-    # 3. Categories and Coloring
-    all_categories = []
+    # 3. Hierarchical Categories and Vivid HSL Coloring
+    def rgb_to_hls(r, g, b):
+        return colorsys.rgb_to_hls(r/255.0, g/255.0, b/255.0)
+
+    def hls_to_hex(h, l, s):
+        r, g, b = colorsys.hls_to_rgb(h, l, s)
+        return f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
+
+    def hex_to_hls(hex_str):
+        hex_str = hex_str.lstrip('#')
+        r = int(hex_str[0:2], 16)
+        g = int(hex_str[2:4], 16)
+        b = int(hex_str[4:6], 16)
+        return rgb_to_hls(r, g, b)
+
+    vivid_palette = ['#38bdf8', '#fb7185', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#2dd4bf', '#60a5fa']
+
+    parent_categories = []
+    hierarchical_categories = []
     for m in file_metadata:
-        cat = m.get("categories", ["Uncategorized"])[0]
-        all_categories.append(cat)
+        cats = m.get("categories", ["Uncategorized"])
+        parent = cats[0]
+        sub = cats[1] if len(cats) > 1 else "General"
+        parent_categories.append(parent)
+        hierarchical_categories.append((parent, sub))
+        
+    unique_parents = sorted(list(set(parent_categories)))
     
-    unique_cats = sorted(list(set(all_categories)))
-    palette = ['#38bdf8', '#fb7185', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#2dd4bf', '#60a5fa']
-    cat_to_color = {cat: palette[i % len(palette)] for i, cat in enumerate(unique_cats)}
+    parent_to_subs = {}
+    for parent, sub in hierarchical_categories:
+        if parent not in parent_to_subs:
+            parent_to_subs[parent] = set()
+        parent_to_subs[parent].add(sub)
+        
+    parent_to_sorted_subs = {parent: sorted(list(subs)) for parent, subs in parent_to_subs.items()}
+    
+    parent_base_colors = {}
+    for idx, parent in enumerate(unique_parents):
+        hex_color = vivid_palette[idx % len(vivid_palette)]
+        h, l, s = hex_to_hls(hex_color)
+        parent_base_colors[parent] = (h, l, s, hex_color)
+        
+    hierarchical_colors = {}
+    for parent, subs in parent_to_sorted_subs.items():
+        base_h, base_l, base_s, base_hex = parent_base_colors[parent]
+        num_subs = len(subs)
+        
+        for sub_idx, sub in enumerate(subs):
+            if num_subs <= 1:
+                lightness = base_l
+                saturation = base_s
+            else:
+                lightness_offset = -0.22 + (sub_idx * 0.44 / (num_subs - 1))
+                saturation_offset = -0.15 + (sub_idx * 0.25 / (num_subs - 1))
+                lightness = max(0.30, min(0.90, base_l + lightness_offset))
+                saturation = max(0.35, min(1.0, base_s + saturation_offset))
+                
+            hierarchical_colors[(parent, sub)] = hls_to_hex(base_h, lightness, saturation)
+
+    cat_to_color = {parent: parent_base_colors[parent][3] for parent in unique_parents}
 
     # 4. Combine data for visualization
     nodes = []
     for i in range(len(vectors_3d)):
-        cat = file_metadata[i].get("categories", ["Uncategorized"])[0]
+        cats = file_metadata[i].get("categories", ["Uncategorized"])
+        parent = cats[0]
+        sub = cats[1] if len(cats) > 1 else "General"
         source_path = file_metadata[i].get("source_path")
         rel_path = file_metadata[i].get("rel_path")
         
@@ -173,8 +234,8 @@ def extract_visualization_data():
             "y": float(vectors_3d[i, 1]),
             "z": float(vectors_3d[i, 2]),
             "size": 8 + min(12, len(file_texts[i]) / 1000),
-            "color": cat_to_color[cat],
-            "category": cat,
+            "color": hierarchical_colors.get((parent, sub), parent_base_colors.get(parent, (0, 0, 0, "#cccccc"))[3]),
+            "category": parent,
             "mtime": mtime,
             "text": file_texts[i],
             "metadata": file_metadata[i]
